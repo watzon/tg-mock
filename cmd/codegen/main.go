@@ -39,6 +39,12 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Println("Generated methods.go")
+
+	if err := generateFixtures(spec, *outDir); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to generate fixtures: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("Generated fixtures.go")
 }
 
 func loadSpec(path string) (*Spec, error) {
