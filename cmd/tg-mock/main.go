@@ -8,17 +8,47 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/watzon/tg-mock/internal/config"
 	"github.com/watzon/tg-mock/internal/server"
 )
 
 func main() {
-	port := flag.Int("port", 8081, "HTTP server port")
-	verbose := flag.Bool("verbose", false, "Enable verbose logging")
+	port := flag.Int("port", 0, "HTTP server port (overrides config)")
+	verbose := flag.Bool("verbose", false, "Enable verbose logging (overrides config)")
+	configPath := flag.String("config", "", "Path to config file")
+	storageDir := flag.String("storage-dir", "", "Directory for file storage")
 	flag.Parse()
 
+	// Load config
+	var cfg *config.Config
+	if *configPath != "" {
+		var err error
+		cfg, err = config.Load(*configPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
+			os.Exit(1)
+		}
+	} else {
+		cfg = config.DefaultConfig()
+	}
+
+	// CLI overrides
+	if *port != 0 {
+		cfg.Server.Port = *port
+	}
+	if *verbose {
+		cfg.Server.Verbose = true
+	}
+	if *storageDir != "" {
+		cfg.Storage.Dir = *storageDir
+	}
+
 	srv := server.New(server.Config{
-		Port:    *port,
-		Verbose: *verbose,
+		Port:       cfg.Server.Port,
+		Verbose:    cfg.Server.Verbose,
+		Tokens:     cfg.Tokens,
+		Scenarios:  cfg.Scenarios,
+		StorageDir: cfg.Storage.Dir,
 	})
 
 	// Handle graceful shutdown

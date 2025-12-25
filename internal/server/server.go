@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/watzon/tg-mock/internal/config"
 	"github.com/watzon/tg-mock/internal/scenario"
 	"github.com/watzon/tg-mock/internal/tokens"
 	"github.com/watzon/tg-mock/internal/updates"
@@ -26,8 +27,11 @@ type Server struct {
 }
 
 type Config struct {
-	Port    int
-	Verbose bool
+	Port       int
+	Verbose    bool
+	Tokens     map[string]config.TokenConfig
+	Scenarios  []config.ScenarioConfig
+	StorageDir string
 }
 
 func New(cfg Config) *Server {
@@ -42,13 +46,38 @@ func New(cfg Config) *Server {
 	scenarioEngine := scenario.NewEngine()
 	updateQueue := updates.NewQueue()
 
+	// Load tokens from config
+	for token, info := range cfg.Tokens {
+		registry.Register(token, tokens.TokenInfo{
+			Status:  tokens.Status(info.Status),
+			BotName: info.BotName,
+		})
+	}
+
+	// Load scenarios from config
+	for _, sc := range cfg.Scenarios {
+		scenarioEngine.Add(&scenario.Scenario{
+			Method: sc.Method,
+			Match:  sc.Match,
+			Times:  sc.Times,
+			Response: &scenario.ErrorResponse{
+				ErrorCode:   sc.Response.ErrorCode,
+				Description: sc.Response.Description,
+				RetryAfter:  sc.Response.RetryAfter,
+			},
+		})
+	}
+
+	// Enable token registry if any tokens are configured
+	registryEnabled := len(cfg.Tokens) > 0
+
 	s := &Server{
 		router:         r,
 		port:           cfg.Port,
 		tokenRegistry:  registry,
 		scenarioEngine: scenarioEngine,
 		updateQueue:    updateQueue,
-		botHandler:     NewBotHandler(registry, scenarioEngine, updateQueue, false), // Registry disabled by default
+		botHandler:     NewBotHandler(registry, scenarioEngine, updateQueue, registryEnabled),
 		controlHandler: NewControlHandler(scenarioEngine, registry, updateQueue),
 	}
 
