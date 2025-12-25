@@ -14,14 +14,19 @@ A mock Telegram Bot API server for testing bots and bot libraries. Inspired by [
     - [CLI Flags](#cli-flags)
     - [Connecting Your Bot](#connecting-your-bot)
     - [Configuration](#configuration)
+  - [Response Generation](#response-generation)
+    - [Smart Faker](#smart-faker)
+    - [Deterministic Mode](#deterministic-mode)
   - [Control API](#control-api)
     - [Scenarios](#scenarios)
+    - [Response Data Overrides](#response-data-overrides)
     - [Updates](#updates)
     - [Header-based Errors](#header-based-errors)
       - [Available Built-in Scenarios](#available-built-in-scenarios)
   - [Examples](#examples)
     - [Testing Error Handling](#testing-error-handling)
     - [Simulating Incoming Messages](#simulating-incoming-messages)
+    - [Custom Response Data](#custom-response-data)
   - [Contributing](#contributing)
   - [License](#license)
 
@@ -77,12 +82,13 @@ tg-mock --storage-dir /tmp/tg-mock-files
 
 ### CLI Flags
 
-| Flag            | Description                | Default    |
-| --------------- | -------------------------- | ---------- |
-| `--port`        | HTTP server port           | 8081       |
-| `--config`      | Path to YAML config file   | (none)     |
-| `--verbose`     | Enable verbose logging     | false      |
-| `--storage-dir` | Directory for file storage | (temp dir) |
+| Flag            | Description                                     | Default    |
+| --------------- | ----------------------------------------------- | ---------- |
+| `--port`        | HTTP server port                                | 8081       |
+| `--config`      | Path to YAML config file                        | (none)     |
+| `--verbose`     | Enable verbose logging                          | false      |
+| `--storage-dir` | Directory for file storage                      | (temp dir) |
+| `--faker-seed`  | Seed for faker (0 = random, >0 = deterministic) | 0          |
 
 ### Connecting Your Bot
 
@@ -106,6 +112,7 @@ Create a YAML configuration file for persistent settings:
 server:
   port: 8081
   verbose: true
+  faker_seed: 12345  # Fixed seed for reproducible tests (0 = random)
 
 storage:
   dir: /tmp/tg-mock-files
@@ -118,13 +125,63 @@ tokens:
     status: revoked
 
 scenarios:
+  # Error scenario
   - method: sendMessage
     match:
       chat_id: 999
     response:
       error_code: 400
       description: "Bad Request: chat not found"
+
+  # Success override scenario
+  - method: getMe
+    response_data:
+      id: 123456789
+      first_name: "MyTestBot"
+      username: "my_test_bot"
 ```
+
+## Response Generation
+
+tg-mock generates realistic mock responses for all Telegram Bot API methods using a smart faker system.
+
+### Smart Faker
+
+The faker uses field name heuristics to generate appropriate values:
+
+| Field Pattern             | Generated Value             |
+| ------------------------- | --------------------------- |
+| `*_id`, `*Id`             | Large random int64          |
+| `date`, `*_date`          | Recent Unix timestamp       |
+| `username`                | `@user_xxxx` format         |
+| `first_name`, `last_name` | Realistic names             |
+| `title`, `name`           | Title-case strings          |
+| `text`, `caption`         | Lorem-like text             |
+| `url`, `*_url`            | `https://example.com/...`   |
+| `latitude`                | -90 to 90                   |
+| `longitude`               | -180 to 180                 |
+| `file_path`               | `files/document.ext`        |
+| `is_*`, `can_*`, `has_*`  | Boolean                     |
+| `language_code`           | IETF tag (e.g., `en`, `ru`) |
+
+The faker also reflects request parameters back into responses. For example, when you call `sendMessage` with `chat_id: 12345`, the response `Message.chat.id` will be `12345`.
+
+### Deterministic Mode
+
+For reproducible tests, use a fixed faker seed:
+
+```bash
+# CLI flag
+tg-mock --faker-seed 12345
+
+# Or in config file
+server:
+  faker_seed: 12345
+```
+
+With a fixed seed, the same sequence of API calls will always produce identical responses. This is essential for snapshot testing and debugging flaky tests.
+
+When `faker_seed` is 0 (the default), responses are randomized on each server start.
 
 ## Control API
 
@@ -166,6 +223,46 @@ curl http://localhost:8081/__control/scenarios
 
 # Clear all scenarios
 curl -X DELETE http://localhost:8081/__control/scenarios
+```
+
+### Response Data Overrides
+
+Scenarios can also override specific fields in successful responses without triggering errors. This is useful for testing specific data conditions:
+
+```bash
+# Override specific fields in the response
+curl -X POST http://localhost:8081/__control/scenarios \
+  -H "Content-Type: application/json" \
+  -d '{
+    "method": "getChat",
+    "match": {"chat_id": 12345},
+    "times": 1,
+    "response_data": {
+      "id": 12345,
+      "type": "supergroup",
+      "title": "My Custom Group",
+      "username": "mycustomgroup"
+    }
+  }'
+
+# The next getChat call for chat_id 12345 will return a supergroup
+# with the specified title and username, while other fields are faker-generated
+```
+
+You can combine `response_data` with `match` to create conditional responses:
+
+```bash
+# Different response based on chat_id
+curl -X POST http://localhost:8081/__control/scenarios \
+  -H "Content-Type: application/json" \
+  -d '{
+    "method": "sendMessage",
+    "match": {"chat_id": 999},
+    "response_data": {
+      "message_id": 42,
+      "text": "Custom reply for chat 999"
+    }
+  }'
 ```
 
 ### Updates
@@ -260,6 +357,47 @@ curl -X POST http://localhost:8081/__control/updates \
   }'
 
 # Your bot can now receive this via getUpdates
+```
+
+### Custom Response Data
+
+```bash
+# Start with deterministic mode for reproducible tests
+tg-mock --faker-seed 12345 &
+
+# Set up a scenario that returns a specific user for getMe
+curl -X POST http://localhost:8081/__control/scenarios \
+  -H "Content-Type: application/json" \
+  -d '{
+    "method": "getMe",
+    "response_data": {
+      "id": 123456789,
+      "is_bot": true,
+      "first_name": "TestBot",
+      "username": "my_test_bot",
+      "can_join_groups": true,
+      "can_read_all_group_messages": false,
+      "supports_inline_queries": true
+    }
+  }'
+
+# Now getMe returns your custom bot info
+curl http://localhost:8081/bot123:abc/getMe
+# Returns: {"ok":true,"result":{"id":123456789,"is_bot":true,"first_name":"TestBot",...}}
+
+# Set up photo responses with specific dimensions
+curl -X POST http://localhost:8081/__control/scenarios \
+  -H "Content-Type: application/json" \
+  -d '{
+    "method": "sendPhoto",
+    "response_data": {
+      "photo": [
+        {"file_id": "small_photo_id", "width": 90, "height": 90},
+        {"file_id": "medium_photo_id", "width": 320, "height": 320},
+        {"file_id": "large_photo_id", "width": 800, "height": 800}
+      ]
+    }
+  }'
 ```
 
 ## Contributing
