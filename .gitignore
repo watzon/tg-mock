@@ -1,5 +1,6 @@
 # Build artifacts
 bin/
+tg-mock
 
 # IDE
 .idea/
@@ -8,3 +9,14 @@ bin/
 
 # OS files
 .DS_Store
+
+# AI shit
+CLAUDE.md
+AGENTS.md
+GEMINI.md
+docs/
+.cursor/
+.windsurf/
+.claude/
+.gemini/
+.codex/

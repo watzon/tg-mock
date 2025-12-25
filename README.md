@@ -2,22 +2,53 @@
 
 A mock Telegram Bot API server for testing bots and bot libraries.
 
-## Features
+## Table of Contents
 
-- Drop-in replacement for `api.telegram.org`
-- Realistic response generation for all Bot API methods
-- Scenario-based error simulation
-- Control API for injecting updates and managing test scenarios
-- Built-in error responses for common Telegram API errors
-- File upload support with configurable storage
+- [tg-mock](#tg-mock)
+  - [Table of Contents](#table-of-contents)
+  - [Background](#background)
+  - [Install](#install)
+    - [Using Go](#using-go)
+    - [From Source](#from-source)
+  - [Usage](#usage)
+    - [CLI Flags](#cli-flags)
+    - [Connecting Your Bot](#connecting-your-bot)
+    - [Configuration](#configuration)
+  - [Control API](#control-api)
+    - [Scenarios](#scenarios)
+    - [Updates](#updates)
+    - [Header-based Errors](#header-based-errors)
+      - [Available Built-in Scenarios](#available-built-in-scenarios)
+  - [Examples](#examples)
+    - [Testing Error Handling](#testing-error-handling)
+    - [Simulating Incoming Messages](#simulating-incoming-messages)
+  - [Contributing](#contributing)
+  - [License](#license)
 
-## Installation
+## Background
+
+Testing Telegram bots is challenging because:
+- The real Telegram API requires network connectivity
+- Simulating errors and edge cases is difficult
+- You can't control the timing and content of incoming updates
+
+tg-mock solves these problems by providing a drop-in replacement for `api.telegram.org` that:
+- Validates requests against the official Bot API spec
+- Generates realistic responses for all Bot API methods
+- Supports scenario-based error simulation
+- Provides a control API for injecting updates and managing test scenarios
+- Includes built-in error responses for common Telegram API errors
+- Handles file uploads with configurable storage
+
+## Install
+
+### Using Go
 
 ```bash
 go install github.com/watzon/tg-mock/cmd/tg-mock@latest
 ```
 
-Or build from source:
+### From Source
 
 ```bash
 git clone https://github.com/watzon/tg-mock.git
@@ -46,11 +77,11 @@ tg-mock --storage-dir /tmp/tg-mock-files
 
 ### CLI Flags
 
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--port` | HTTP server port | 8081 |
-| `--config` | Path to YAML config file | (none) |
-| `--verbose` | Enable verbose logging | false |
+| Flag            | Description                | Default    |
+| --------------- | -------------------------- | ---------- |
+| `--port`        | HTTP server port           | 8081       |
+| `--config`      | Path to YAML config file   | (none)     |
+| `--verbose`     | Enable verbose logging     | false      |
 | `--storage-dir` | Directory for file storage | (temp dir) |
 
 ### Connecting Your Bot
@@ -62,11 +93,12 @@ http://localhost:8081/bot<TOKEN>/<METHOD>
 ```
 
 For example:
+
 ```bash
 curl http://localhost:8081/bot123456789:ABC-xyz/getMe
 ```
 
-## Configuration
+### Configuration
 
 Create a YAML configuration file for persistent settings:
 
@@ -177,24 +209,24 @@ curl -H "X-TG-Mock-Scenario: chat_not_found" \
 
 #### Available Built-in Scenarios
 
-| Scenario | Error Code | Description |
-|----------|------------|-------------|
-| `bad_request` | 400 | Bad Request |
-| `chat_not_found` | 400 | Bad Request: chat not found |
-| `user_not_found` | 400 | Bad Request: user not found |
-| `message_not_found` | 400 | Bad Request: message to edit not found |
-| `message_not_modified` | 400 | Bad Request: message is not modified |
-| `message_too_long` | 400 | Bad Request: message is too long |
-| `file_too_big` | 400 | Bad Request: file is too big |
-| `invalid_file_id` | 400 | Bad Request: invalid file id |
-| `unauthorized` | 401 | Unauthorized |
-| `forbidden` | 403 | Forbidden |
-| `bot_blocked` | 403 | Forbidden: bot was blocked by the user |
-| `bot_kicked` | 403 | Forbidden: bot was kicked from the chat |
-| `cant_initiate` | 403 | Forbidden: bot can't initiate conversation with a user |
-| `webhook_active` | 409 | Conflict: can't use getUpdates method while webhook is active |
-| `rate_limit` | 429 | Too Many Requests: retry after 30 |
-| `flood_wait` | 429 | Flood control exceeded. Retry in 60 seconds |
+| Scenario               | Error Code | Description                                                   |
+| ---------------------- | ---------- | ------------------------------------------------------------- |
+| `bad_request`          | 400        | Bad Request                                                   |
+| `chat_not_found`       | 400        | Bad Request: chat not found                                   |
+| `user_not_found`       | 400        | Bad Request: user not found                                   |
+| `message_not_found`    | 400        | Bad Request: message to edit not found                        |
+| `message_not_modified` | 400        | Bad Request: message is not modified                          |
+| `message_too_long`     | 400        | Bad Request: message is too long                              |
+| `file_too_big`         | 400        | Bad Request: file is too big                                  |
+| `invalid_file_id`      | 400        | Bad Request: invalid file id                                  |
+| `unauthorized`         | 401        | Unauthorized                                                  |
+| `forbidden`            | 403        | Forbidden                                                     |
+| `bot_blocked`          | 403        | Forbidden: bot was blocked by the user                        |
+| `bot_kicked`           | 403        | Forbidden: bot was kicked from the chat                       |
+| `cant_initiate`        | 403        | Forbidden: bot can't initiate conversation with a user        |
+| `webhook_active`       | 409        | Conflict: can't use getUpdates method while webhook is active |
+| `rate_limit`           | 429        | Too Many Requests: retry after 30                             |
+| `flood_wait`           | 429        | Flood control exceeded. Retry in 60 seconds                   |
 
 ## Examples
 
@@ -230,6 +262,12 @@ curl -X POST http://localhost:8081/__control/updates \
 # Your bot can now receive this via getUpdates
 ```
 
+## Contributing
+
+PRs are welcome! Please open an issue first to discuss any major changes.
+
+If you find a bug or have a feature request, please [open an issue](https://github.com/watzon/tg-mock/issues).
+
 ## License
 
-MIT
+MIT © watzon
