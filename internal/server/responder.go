@@ -40,6 +40,8 @@ func (r *Responder) Generate(spec gen.MethodSpec, params map[string]interface{})
 		return r.generateMessage(params), nil
 	case "Array of Update":
 		return []interface{}{}, nil
+	case "File":
+		return r.generateFile(params), nil
 	default:
 		// Return a basic success response
 		return map[string]interface{}{}, nil
@@ -80,4 +82,25 @@ func (r *Responder) generateMessage(params map[string]interface{}) map[string]in
 	}
 
 	return msg
+}
+
+// generateFile creates a File response for getFile method
+func (r *Responder) generateFile(params map[string]interface{}) map[string]interface{} {
+	fileID := "placeholder"
+	if id, ok := params["file_id"].(string); ok {
+		fileID = id
+	}
+
+	// Ensure file_id is at least 8 characters for unique_id generation
+	uniqueIDSuffix := fileID
+	if len(fileID) >= 8 {
+		uniqueIDSuffix = fileID[:8]
+	}
+
+	return map[string]interface{}{
+		"file_id":        fileID,
+		"file_unique_id": "unique_" + uniqueIDSuffix,
+		"file_size":      1024,
+		"file_path":      "documents/file.txt",
+	}
 }

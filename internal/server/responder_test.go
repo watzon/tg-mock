@@ -123,4 +123,60 @@ func TestGenerateResponse(t *testing.T) {
 			t.Errorf("message IDs should be incrementing: got %d, %d", id1, id2)
 		}
 	})
+
+	t.Run("getFile returns File with provided file_id", func(t *testing.T) {
+		spec := gen.Methods["getFile"]
+		params := map[string]interface{}{
+			"file_id": "AgACAgIAAxkBAAIBZ2ABC123DEF456",
+		}
+
+		result, err := r.Generate(spec, params)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		file, ok := result.(map[string]interface{})
+		if !ok {
+			t.Fatalf("expected map, got %T", result)
+		}
+
+		if file["file_id"] != "AgACAgIAAxkBAAIBZ2ABC123DEF456" {
+			t.Errorf("file_id = %v, want 'AgACAgIAAxkBAAIBZ2ABC123DEF456'", file["file_id"])
+		}
+
+		if file["file_unique_id"] != "unique_AgACAgIA" {
+			t.Errorf("file_unique_id = %v, want 'unique_AgACAgIA'", file["file_unique_id"])
+		}
+
+		if file["file_size"] != 1024 {
+			t.Errorf("file_size = %v, want 1024", file["file_size"])
+		}
+
+		if file["file_path"] != "documents/file.txt" {
+			t.Errorf("file_path = %v, want 'documents/file.txt'", file["file_path"])
+		}
+	})
+
+	t.Run("getFile uses placeholder when no file_id provided", func(t *testing.T) {
+		spec := gen.Methods["getFile"]
+		params := map[string]interface{}{}
+
+		result, err := r.Generate(spec, params)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		file, ok := result.(map[string]interface{})
+		if !ok {
+			t.Fatalf("expected map, got %T", result)
+		}
+
+		if file["file_id"] != "placeholder" {
+			t.Errorf("file_id = %v, want 'placeholder'", file["file_id"])
+		}
+
+		if file["file_unique_id"] != "unique_placehol" {
+			t.Errorf("file_unique_id = %v, want 'unique_placehol'", file["file_unique_id"])
+		}
+	})
 }
