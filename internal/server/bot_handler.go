@@ -4,6 +4,7 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/watzon/tg-mock/gen"
@@ -175,10 +176,26 @@ func (h *BotHandler) parseParams(r *http.Request) (map[string]interface{}, error
 }
 
 // handleHeaderScenario handles X-TG-Mock-Scenario header-based error scenarios.
-// Will be fully implemented with pre-built errors in Task 18.
+// It looks up pre-built errors by name and returns the appropriate error response.
 func (h *BotHandler) handleHeaderScenario(w http.ResponseWriter, r *http.Request, name string) bool {
-	// Will be implemented with pre-built errors
-	return false
+	resp := scenario.GetBuiltinError(name)
+	if resp == nil {
+		return false
+	}
+
+	// Allow retry_after override via header
+	if retryAfter := r.Header.Get("X-TG-Mock-Retry-After"); retryAfter != "" {
+		if val, err := strconv.Atoi(retryAfter); err == nil {
+			resp = &scenario.ErrorResponse{
+				ErrorCode:   resp.ErrorCode,
+				Description: resp.Description,
+				RetryAfter:  val,
+			}
+		}
+	}
+
+	h.writeErrorResponse(w, resp)
+	return true
 }
 
 // writeErrorResponse writes a scenario error response with proper formatting
