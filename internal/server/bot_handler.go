@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/watzon/tg-mock/gen"
+	"github.com/watzon/tg-mock/internal/scenario"
 	"github.com/watzon/tg-mock/internal/tokens"
 )
 
@@ -14,15 +15,17 @@ import (
 type BotHandler struct {
 	registry        *tokens.Registry
 	registryEnabled bool
+	scenarios       *scenario.Engine
 	validator       *Validator
 	responder       *Responder
 }
 
 // NewBotHandler creates a new BotHandler
-func NewBotHandler(registry *tokens.Registry, registryEnabled bool) *BotHandler {
+func NewBotHandler(registry *tokens.Registry, scenarios *scenario.Engine, registryEnabled bool) *BotHandler {
 	return &BotHandler{
 		registry:        registry,
 		registryEnabled: registryEnabled,
+		scenarios:       scenarios,
 		validator:       NewValidator(),
 		responder:       NewResponder(),
 	}
@@ -78,6 +81,22 @@ func (h *BotHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.writeError(w, 400, "Bad Request: "+err.Error())
 		return
+	}
+
+	// Check for header-based scenario
+	if scenarioName := r.Header.Get("X-TG-Mock-Scenario"); scenarioName != "" {
+		if resp := h.handleHeaderScenario(w, r, scenarioName); resp {
+			return
+		}
+	}
+
+	// Check for queued scenarios
+	if s := h.scenarios.Find(method, params); s != nil {
+		s.Use()
+		if s.Response != nil {
+			h.writeErrorResponse(w, s.Response)
+			return
+		}
 	}
 
 	// Validate request
@@ -143,4 +162,27 @@ func (h *BotHandler) parseParams(r *http.Request) (map[string]interface{}, error
 	}
 
 	return params, nil
+}
+
+// handleHeaderScenario handles X-TG-Mock-Scenario header-based error scenarios.
+// Will be fully implemented with pre-built errors in Task 18.
+func (h *BotHandler) handleHeaderScenario(w http.ResponseWriter, r *http.Request, name string) bool {
+	// Will be implemented with pre-built errors
+	return false
+}
+
+// writeErrorResponse writes a scenario error response with proper formatting
+func (h *BotHandler) writeErrorResponse(w http.ResponseWriter, resp *scenario.ErrorResponse) {
+	w.WriteHeader(resp.ErrorCode)
+	response := map[string]interface{}{
+		"ok":          false,
+		"error_code":  resp.ErrorCode,
+		"description": resp.Description,
+	}
+	if resp.RetryAfter > 0 {
+		response["parameters"] = map[string]interface{}{
+			"retry_after": resp.RetryAfter,
+		}
+	}
+	json.NewEncoder(w).Encode(response)
 }
