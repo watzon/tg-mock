@@ -22,6 +22,17 @@ func main() {
 	fmt.Printf("Loaded spec: %s (%s)\n", spec.Version, spec.ReleaseDate)
 	fmt.Printf("Methods: %d, Types: %d\n", len(spec.Methods), len(spec.Types))
 	fmt.Printf("Output directory: %s\n", *outDir)
+
+	if err := os.MkdirAll(*outDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create output dir: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := generateTypes(spec, *outDir); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to generate types: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("Generated types.go")
 }
 
 func loadSpec(path string) (*Spec, error) {
