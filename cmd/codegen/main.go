@@ -33,6 +33,12 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Println("Generated types.go")
+
+	if err := generateMethods(spec, *outDir); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to generate methods: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("Generated methods.go")
 }
 
 func loadSpec(path string) (*Spec, error) {
