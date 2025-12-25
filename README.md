@@ -1,6 +1,6 @@
 # tg-mock
 
-A mock Telegram Bot API server for testing bots and bot libraries.
+A mock Telegram Bot API server for testing bots and bot libraries. Inspired by [stripe/stripe-mock](https://github.com/stripe/stripe-mock).
 
 ## Table of Contents
 
