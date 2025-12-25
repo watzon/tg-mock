@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/watzon/tg-mock/internal/config"
 	"github.com/watzon/tg-mock/internal/scenario"
+	"github.com/watzon/tg-mock/internal/storage"
 	"github.com/watzon/tg-mock/internal/tokens"
 	"github.com/watzon/tg-mock/internal/updates"
 )
@@ -22,6 +23,7 @@ type Server struct {
 	tokenRegistry  *tokens.Registry
 	scenarioEngine *scenario.Engine
 	updateQueue    *updates.Queue
+	fileStore      storage.Store
 	botHandler     *BotHandler
 	controlHandler *ControlHandler
 }
@@ -71,12 +73,22 @@ func New(cfg Config) *Server {
 	// Enable token registry if any tokens are configured
 	registryEnabled := len(cfg.Tokens) > 0
 
+	// Create file storage (for now always use MemoryStore)
+	var fileStore storage.Store
+	if cfg.StorageDir != "" {
+		// TODO: implement disk store when needed
+		fileStore = storage.NewMemoryStore()
+	} else {
+		fileStore = storage.NewMemoryStore()
+	}
+
 	s := &Server{
 		router:         r,
 		port:           cfg.Port,
 		tokenRegistry:  registry,
 		scenarioEngine: scenarioEngine,
 		updateQueue:    updateQueue,
+		fileStore:      fileStore,
 		botHandler:     NewBotHandler(registry, scenarioEngine, updateQueue, registryEnabled),
 		controlHandler: NewControlHandler(scenarioEngine, registry, updateQueue),
 	}
@@ -100,6 +112,24 @@ func (s *Server) setupRoutes() {
 		r.Post("/{method}", s.botHandler.Handle)
 		r.Get("/{method}", s.botHandler.Handle)
 	})
+
+	// File download endpoint
+	s.router.Get("/file/bot{token}/{path:.*}", s.handleFileDownload)
+}
+
+func (s *Server) handleFileDownload(w http.ResponseWriter, r *http.Request) {
+	token := chi.URLParam(r, "token")
+	// path := chi.URLParam(r, "path") // Will be used in future implementation
+
+	// Validate token format
+	if !tokens.ValidateFormat(token) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Find file by path
+	// For now, return 404 - actual implementation needs file lookup by path
+	http.Error(w, "File not found", http.StatusNotFound)
 }
 
 func (s *Server) Start() error {
