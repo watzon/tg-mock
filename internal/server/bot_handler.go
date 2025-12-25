@@ -9,6 +9,7 @@ import (
 	"github.com/watzon/tg-mock/gen"
 	"github.com/watzon/tg-mock/internal/scenario"
 	"github.com/watzon/tg-mock/internal/tokens"
+	"github.com/watzon/tg-mock/internal/updates"
 )
 
 // BotHandler handles Bot API requests with token validation
@@ -16,16 +17,18 @@ type BotHandler struct {
 	registry        *tokens.Registry
 	registryEnabled bool
 	scenarios       *scenario.Engine
+	updates         *updates.Queue
 	validator       *Validator
 	responder       *Responder
 }
 
 // NewBotHandler creates a new BotHandler
-func NewBotHandler(registry *tokens.Registry, scenarios *scenario.Engine, registryEnabled bool) *BotHandler {
+func NewBotHandler(registry *tokens.Registry, scenarios *scenario.Engine, updates *updates.Queue, registryEnabled bool) *BotHandler {
 	return &BotHandler{
 		registry:        registry,
 		registryEnabled: registryEnabled,
 		scenarios:       scenarios,
+		updates:         updates,
 		validator:       NewValidator(),
 		responder:       NewResponder(),
 	}
@@ -97,6 +100,13 @@ func (h *BotHandler) Handle(w http.ResponseWriter, r *http.Request) {
 			h.writeErrorResponse(w, s.Response)
 			return
 		}
+	}
+
+	// Handle getUpdates specially
+	if method == "getUpdates" {
+		result := h.handleGetUpdates(params)
+		h.writeSuccess(w, result)
+		return
 	}
 
 	// Validate request
@@ -185,4 +195,48 @@ func (h *BotHandler) writeErrorResponse(w http.ResponseWriter, resp *scenario.Er
 		}
 	}
 	json.NewEncoder(w).Encode(response)
+}
+
+// handleGetUpdates processes the getUpdates method by returning updates from the queue
+func (h *BotHandler) handleGetUpdates(params map[string]interface{}) []map[string]interface{} {
+	offset := int64(0)
+	if o, ok := params["offset"].(float64); ok {
+		offset = int64(o)
+	} else if o, ok := params["offset"].(string); ok {
+		// Handle string offset (from query params)
+		if parsed, err := parseInt64(o); err == nil {
+			offset = parsed
+		}
+	}
+
+	limit := 100
+	if l, ok := params["limit"].(float64); ok {
+		limit = int(l)
+	} else if l, ok := params["limit"].(string); ok {
+		// Handle string limit (from query params)
+		if parsed, err := parseInt(l); err == nil {
+			limit = parsed
+		}
+	}
+
+	// Acknowledge previous updates
+	if offset > 0 {
+		h.updates.Acknowledge(offset)
+	}
+
+	return h.updates.Get(offset, limit)
+}
+
+// parseInt64 parses a string to int64
+func parseInt64(s string) (int64, error) {
+	var n int64
+	err := json.Unmarshal([]byte(s), &n)
+	return n, err
+}
+
+// parseInt parses a string to int
+func parseInt(s string) (int, error) {
+	var n int
+	err := json.Unmarshal([]byte(s), &n)
+	return n, err
 }

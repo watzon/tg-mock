@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/watzon/tg-mock/internal/scenario"
 	"github.com/watzon/tg-mock/internal/tokens"
+	"github.com/watzon/tg-mock/internal/updates"
 )
 
 type Server struct {
@@ -19,6 +20,7 @@ type Server struct {
 	port           int
 	tokenRegistry  *tokens.Registry
 	scenarioEngine *scenario.Engine
+	updateQueue    *updates.Queue
 	botHandler     *BotHandler
 	controlHandler *ControlHandler
 }
@@ -38,14 +40,16 @@ func New(cfg Config) *Server {
 
 	registry := tokens.NewRegistry()
 	scenarioEngine := scenario.NewEngine()
+	updateQueue := updates.NewQueue()
 
 	s := &Server{
 		router:         r,
 		port:           cfg.Port,
 		tokenRegistry:  registry,
 		scenarioEngine: scenarioEngine,
-		botHandler:     NewBotHandler(registry, scenarioEngine, false), // Registry disabled by default
-		controlHandler: NewControlHandler(scenarioEngine, registry),
+		updateQueue:    updateQueue,
+		botHandler:     NewBotHandler(registry, scenarioEngine, updateQueue, false), // Registry disabled by default
+		controlHandler: NewControlHandler(scenarioEngine, registry, updateQueue),
 	}
 
 	s.setupRoutes()
