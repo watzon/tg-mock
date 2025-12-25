@@ -20,6 +20,7 @@ type Server struct {
 	tokenRegistry  *tokens.Registry
 	scenarioEngine *scenario.Engine
 	botHandler     *BotHandler
+	controlHandler *ControlHandler
 }
 
 type Config struct {
@@ -44,6 +45,7 @@ func New(cfg Config) *Server {
 		tokenRegistry:  registry,
 		scenarioEngine: scenarioEngine,
 		botHandler:     NewBotHandler(registry, scenarioEngine, false), // Registry disabled by default
+		controlHandler: NewControlHandler(scenarioEngine, registry),
 	}
 
 	s.setupRoutes()
@@ -57,12 +59,8 @@ func (s *Server) setupRoutes() {
 		w.Write([]byte("ok"))
 	})
 
-	// Control API placeholder
-	s.router.Route("/__control", func(r chi.Router) {
-		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte(`{"status":"ok"}`))
-		})
-	})
+	// Control API
+	s.router.Mount("/__control", s.controlHandler.Routes())
 
 	// Bot API routes
 	s.router.Route("/bot{token}", func(r chi.Router) {
