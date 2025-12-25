@@ -9,12 +9,15 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/watzon/tg-mock/internal/tokens"
 )
 
 type Server struct {
-	router     chi.Router
-	httpServer *http.Server
-	port       int
+	router        chi.Router
+	httpServer    *http.Server
+	port          int
+	tokenRegistry *tokens.Registry
+	botHandler    *BotHandler
 }
 
 type Config struct {
@@ -30,9 +33,13 @@ func New(cfg Config) *Server {
 	}
 	r.Use(middleware.Recoverer)
 
+	registry := tokens.NewRegistry()
+
 	s := &Server{
-		router: r,
-		port:   cfg.Port,
+		router:        r,
+		port:          cfg.Port,
+		tokenRegistry: registry,
+		botHandler:    NewBotHandler(registry, false), // Registry disabled by default
 	}
 
 	s.setupRoutes()
@@ -53,24 +60,11 @@ func (s *Server) setupRoutes() {
 		})
 	})
 
-	// Bot API placeholder
+	// Bot API routes
 	s.router.Route("/bot{token}", func(r chi.Router) {
-		r.Post("/{method}", s.handleBotMethod)
-		r.Get("/{method}", s.handleBotMethod)
+		r.Post("/{method}", s.botHandler.Handle)
+		r.Get("/{method}", s.botHandler.Handle)
 	})
-}
-
-func (s *Server) handleBotMethod(w http.ResponseWriter, r *http.Request) {
-	token := chi.URLParam(r, "token")
-	method := chi.URLParam(r, "method")
-
-	w.Header().Set("Content-Type", "application/json")
-	// Truncate token for display if long enough
-	displayToken := token
-	if len(token) > 10 {
-		displayToken = token[:10] + "..."
-	}
-	fmt.Fprintf(w, `{"ok":true,"method":%q,"token":%q}`, method, displayToken)
 }
 
 func (s *Server) Start() error {
