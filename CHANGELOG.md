@@ -1,0 +1,24 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.1.0] - 2025-12-25
+
+### Added
+
+- Initial release of tg-mock, a mock Telegram Bot API server
+- Token validation with format `<bot_id>:<secret>`
+- Token registry with status tracking (active/banned/deactivated)
+- Scenario engine for configurable error responses
+- Update queue for getUpdates polling simulation
+- Request validation against official Telegram Bot API spec
+- Realistic response generation with proper fixtures
+- Code generator for types, methods, and fixtures from API spec
+- YAML configuration support
+- CLI with `--port`, `--verbose`, `--config`, and `--storage-dir` flags
+- Control API at `/__control/*` for test configuration
+- CI/CD pipeline with GitHub Actions
+- Multi-platform releases (Linux, macOS, Windows)
