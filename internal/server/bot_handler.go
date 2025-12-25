@@ -14,6 +14,8 @@ import (
 type BotHandler struct {
 	registry        *tokens.Registry
 	registryEnabled bool
+	validator       *Validator
+	responder       *Responder
 }
 
 // NewBotHandler creates a new BotHandler
@@ -21,6 +23,8 @@ func NewBotHandler(registry *tokens.Registry, registryEnabled bool) *BotHandler 
 	return &BotHandler{
 		registry:        registry,
 		registryEnabled: registryEnabled,
+		validator:       NewValidator(),
+		responder:       NewResponder(),
 	}
 }
 
@@ -69,10 +73,27 @@ func (h *BotHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// For now, return a success stub
-	h.writeSuccess(w, map[string]interface{}{
-		"method": spec.Name,
-	})
+	// Parse parameters
+	params, err := h.parseParams(r)
+	if err != nil {
+		h.writeError(w, 400, "Bad Request: "+err.Error())
+		return
+	}
+
+	// Validate request
+	if err := h.validator.Validate(spec, params); err != nil {
+		h.writeError(w, 400, "Bad Request: "+err.Error())
+		return
+	}
+
+	// Generate response
+	result, err := h.responder.Generate(spec, params)
+	if err != nil {
+		h.writeError(w, 500, "Internal Server Error")
+		return
+	}
+
+	h.writeSuccess(w, result)
 }
 
 func (h *BotHandler) writeError(w http.ResponseWriter, code int, desc string) {
@@ -89,4 +110,37 @@ func (h *BotHandler) writeSuccess(w http.ResponseWriter, result interface{}) {
 		OK:     true,
 		Result: result,
 	})
+}
+
+// parseParams extracts parameters from query string, JSON body, and form data
+func (h *BotHandler) parseParams(r *http.Request) (map[string]interface{}, error) {
+	params := make(map[string]interface{})
+
+	// Parse query params
+	for key, values := range r.URL.Query() {
+		if len(values) > 0 {
+			params[key] = values[0]
+		}
+	}
+
+	// Parse JSON body if present
+	if r.Body != nil && r.ContentLength > 0 {
+		contentType := r.Header.Get("Content-Type")
+		if contentType == "application/json" || contentType == "" {
+			if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+				return nil, err
+			}
+		} else if contentType == "application/x-www-form-urlencoded" {
+			if err := r.ParseForm(); err != nil {
+				return nil, err
+			}
+			for key, values := range r.PostForm {
+				if len(values) > 0 {
+					params[key] = values[0]
+				}
+			}
+		}
+	}
+
+	return params, nil
 }
