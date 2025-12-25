@@ -24,14 +24,14 @@ type BotHandler struct {
 }
 
 // NewBotHandler creates a new BotHandler
-func NewBotHandler(registry *tokens.Registry, scenarios *scenario.Engine, updates *updates.Queue, registryEnabled bool) *BotHandler {
+func NewBotHandler(registry *tokens.Registry, scenarios *scenario.Engine, updates *updates.Queue, responder *Responder, registryEnabled bool) *BotHandler {
 	return &BotHandler{
 		registry:        registry,
 		registryEnabled: registryEnabled,
 		scenarios:       scenarios,
 		updates:         updates,
 		validator:       NewValidator(),
-		responder:       NewResponder(),
+		responder:       responder,
 	}
 }
 
@@ -95,11 +95,16 @@ func (h *BotHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check for queued scenarios
+	var scenarioOverrides map[string]interface{}
 	if s := h.scenarios.Find(method, params); s != nil {
 		s.Use()
-		if s.Response != nil {
+		if s.IsError() {
 			h.writeErrorResponse(w, s.Response)
 			return
+		}
+		// Store response data overrides for later use
+		if s.HasResponseData() {
+			scenarioOverrides = s.ResponseData
 		}
 	}
 
@@ -116,8 +121,8 @@ func (h *BotHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate response
-	result, err := h.responder.Generate(spec, params)
+	// Generate response (with scenario overrides if present)
+	result, err := h.responder.GenerateWithOverrides(spec, params, scenarioOverrides)
 	if err != nil {
 		h.writeError(w, 500, "Internal Server Error")
 		return

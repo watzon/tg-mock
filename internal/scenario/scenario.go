@@ -8,16 +8,28 @@ import (
 	"sync/atomic"
 )
 
-// Scenario represents a single error simulation scenario.
-// It can match specific API method calls and return predetermined error responses.
+// Scenario represents a single simulation scenario.
+// It can match specific API method calls and return predetermined responses.
+// Scenarios can return either error responses (Response) or success data overrides (ResponseData).
 type Scenario struct {
-	ID       string                 `json:"id"`
-	Method   string                 `json:"method"`              // Method to match, or "*" for any method
-	Match    map[string]interface{} `json:"match,omitempty"`     // Parameters to match
-	Times    int                    `json:"times"`               // Number of times to trigger (0 = unlimited)
-	Response *ErrorResponse         `json:"response,omitempty"`  // Error response to return
+	ID           string                 `json:"id"`
+	Method       string                 `json:"method"`                   // Method to match, or "*" for any method
+	Match        map[string]interface{} `json:"match,omitempty"`          // Parameters to match
+	Times        int                    `json:"times"`                    // Number of times to trigger (0 = unlimited)
+	Response     *ErrorResponse         `json:"response,omitempty"`       // Error response to return
+	ResponseData map[string]interface{} `json:"response_data,omitempty"`  // Success response data overrides
 
 	used int32 // atomic counter for number of times this scenario has been used
+}
+
+// IsError returns true if this scenario returns an error response.
+func (s *Scenario) IsError() bool {
+	return s.Response != nil
+}
+
+// HasResponseData returns true if this scenario has success response data overrides.
+func (s *Scenario) HasResponseData() bool {
+	return s.ResponseData != nil && len(s.ResponseData) > 0
 }
 
 // ErrorResponse represents a Telegram API error response.

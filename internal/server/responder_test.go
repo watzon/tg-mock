@@ -5,10 +5,13 @@ import (
 	"testing"
 
 	"github.com/watzon/tg-mock/gen"
+	"github.com/watzon/tg-mock/internal/faker"
 )
 
 func TestGenerateResponse(t *testing.T) {
-	r := NewResponder()
+	// Use a fixed seed for deterministic tests
+	f := faker.New(faker.Config{Seed: 12345})
+	r := NewResponder(f)
 
 	t.Run("getMe returns User", func(t *testing.T) {
 		spec := gen.Methods["getMe"]
@@ -103,7 +106,8 @@ func TestGenerateResponse(t *testing.T) {
 	})
 
 	t.Run("message IDs are unique and incrementing", func(t *testing.T) {
-		r2 := NewResponder() // Fresh responder for this test
+		f2 := faker.New(faker.Config{Seed: 12345})
+		r2 := NewResponder(f2) // Fresh responder for this test
 		spec := gen.Methods["sendMessage"]
 		params := map[string]interface{}{
 			"chat_id": int64(1),
@@ -144,20 +148,19 @@ func TestGenerateResponse(t *testing.T) {
 			t.Errorf("file_id = %v, want 'AgACAgIAAxkBAAIBZ2ABC123DEF456'", file["file_id"])
 		}
 
-		if file["file_unique_id"] != "unique_AgACAgIA" {
-			t.Errorf("file_unique_id = %v, want 'unique_AgACAgIA'", file["file_unique_id"])
+		// Check that file_unique_id and file_path exist (values are now generated)
+		if _, ok := file["file_unique_id"]; !ok {
+			t.Error("file_unique_id should exist")
 		}
-
-		if file["file_size"] != 1024 {
-			t.Errorf("file_size = %v, want 1024", file["file_size"])
+		if _, ok := file["file_path"]; !ok {
+			t.Error("file_path should exist")
 		}
-
-		if file["file_path"] != "documents/file.txt" {
-			t.Errorf("file_path = %v, want 'documents/file.txt'", file["file_path"])
+		if _, ok := file["file_size"]; !ok {
+			t.Error("file_size should exist")
 		}
 	})
 
-	t.Run("getFile uses placeholder when no file_id provided", func(t *testing.T) {
+	t.Run("getFile generates file_id when not provided", func(t *testing.T) {
 		spec := gen.Methods["getFile"]
 		params := map[string]interface{}{}
 
@@ -171,12 +174,75 @@ func TestGenerateResponse(t *testing.T) {
 			t.Fatalf("expected map, got %T", result)
 		}
 
-		if file["file_id"] != "placeholder" {
-			t.Errorf("file_id = %v, want 'placeholder'", file["file_id"])
+		// File should still have all required fields
+		if _, ok := file["file_id"]; !ok {
+			t.Error("file_id should exist")
+		}
+		if _, ok := file["file_unique_id"]; !ok {
+			t.Error("file_unique_id should exist")
+		}
+		if _, ok := file["file_path"]; !ok {
+			t.Error("file_path should exist")
+		}
+	})
+}
+
+func TestGenerateWithOverrides(t *testing.T) {
+	f := faker.New(faker.Config{Seed: 12345})
+	r := NewResponder(f)
+
+	t.Run("overrides are applied", func(t *testing.T) {
+		spec := gen.Methods["sendMessage"]
+		params := map[string]interface{}{
+			"chat_id": int64(12345),
+			"text":    "Original text",
+		}
+		overrides := map[string]interface{}{
+			"message_id": int64(99999),
+			"text":       "Overridden text",
 		}
 
-		if file["file_unique_id"] != "unique_placehol" {
-			t.Errorf("file_unique_id = %v, want 'unique_placehol'", file["file_unique_id"])
+		result, err := r.GenerateWithOverrides(spec, params, overrides)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		msg := result.(map[string]interface{})
+
+		if msg["message_id"] != int64(99999) {
+			t.Errorf("message_id = %v, want 99999", msg["message_id"])
+		}
+		if msg["text"] != "Overridden text" {
+			t.Errorf("text = %v, want 'Overridden text'", msg["text"])
+		}
+	})
+
+	t.Run("nested overrides are applied", func(t *testing.T) {
+		spec := gen.Methods["sendMessage"]
+		params := map[string]interface{}{
+			"chat_id": int64(12345),
+			"text":    "Hello",
+		}
+		overrides := map[string]interface{}{
+			"chat": map[string]interface{}{
+				"title": "Custom Chat Title",
+			},
+		}
+
+		result, err := r.GenerateWithOverrides(spec, params, overrides)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		msg := result.(map[string]interface{})
+		chat := msg["chat"].(map[string]interface{})
+
+		if chat["title"] != "Custom Chat Title" {
+			t.Errorf("chat.title = %v, want 'Custom Chat Title'", chat["title"])
+		}
+		// Original id should still be there
+		if chat["id"] != int64(12345) {
+			t.Errorf("chat.id = %v, want 12345", chat["id"])
 		}
 	})
 }

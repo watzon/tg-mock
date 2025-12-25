@@ -17,9 +17,10 @@ type Config struct {
 
 // ServerConfig holds server-related configuration
 type ServerConfig struct {
-	Port    int  `yaml:"port"`
-	Verbose bool `yaml:"verbose"`
-	Strict  bool `yaml:"strict"`
+	Port      int   `yaml:"port"`
+	Verbose   bool  `yaml:"verbose"`
+	Strict    bool  `yaml:"strict"`
+	FakerSeed int64 `yaml:"faker_seed"` // Seed for faker (0 = random, >0 = fixed for determinism)
 }
 
 // StorageConfig holds file storage configuration
@@ -35,10 +36,11 @@ type TokenConfig struct {
 
 // ScenarioConfig defines a test scenario for simulating specific responses
 type ScenarioConfig struct {
-	Method   string                 `yaml:"method"`
-	Match    map[string]interface{} `yaml:"match"`
-	Times    int                    `yaml:"times"`
-	Response ResponseConfig         `yaml:"response"`
+	Method       string                 `yaml:"method"`
+	Match        map[string]interface{} `yaml:"match"`
+	Times        int                    `yaml:"times"`
+	Response     ResponseConfig         `yaml:"response"`                // For error responses
+	ResponseData map[string]interface{} `yaml:"response_data,omitempty"` // For success response overrides
 }
 
 // ResponseConfig defines the response to return for a scenario

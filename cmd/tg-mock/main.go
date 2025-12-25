@@ -17,6 +17,7 @@ func main() {
 	verbose := flag.Bool("verbose", false, "Enable verbose logging (overrides config)")
 	configPath := flag.String("config", "", "Path to config file")
 	storageDir := flag.String("storage-dir", "", "Directory for file storage")
+	fakerSeed := flag.Int64("faker-seed", 0, "Seed for faker (0 = random, >0 = deterministic)")
 	flag.Parse()
 
 	// Load config
@@ -42,10 +43,14 @@ func main() {
 	if *storageDir != "" {
 		cfg.Storage.Dir = *storageDir
 	}
+	if *fakerSeed != 0 {
+		cfg.Server.FakerSeed = *fakerSeed
+	}
 
 	srv := server.New(server.Config{
 		Port:       cfg.Server.Port,
 		Verbose:    cfg.Server.Verbose,
+		FakerSeed:  cfg.Server.FakerSeed,
 		Tokens:     cfg.Tokens,
 		Scenarios:  cfg.Scenarios,
 		StorageDir: cfg.Storage.Dir,

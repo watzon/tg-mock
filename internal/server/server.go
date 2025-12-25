@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/watzon/tg-mock/internal/config"
+	"github.com/watzon/tg-mock/internal/faker"
 	"github.com/watzon/tg-mock/internal/scenario"
 	"github.com/watzon/tg-mock/internal/storage"
 	"github.com/watzon/tg-mock/internal/tokens"
@@ -31,6 +32,7 @@ type Server struct {
 type Config struct {
 	Port       int
 	Verbose    bool
+	FakerSeed  int64
 	Tokens     map[string]config.TokenConfig
 	Scenarios  []config.ScenarioConfig
 	StorageDir string
@@ -48,6 +50,14 @@ func New(cfg Config) *Server {
 	scenarioEngine := scenario.NewEngine()
 	updateQueue := updates.NewQueue()
 
+	// Create faker with configured seed
+	f := faker.New(faker.Config{
+		Seed: cfg.FakerSeed,
+	})
+
+	// Create responder with faker
+	responder := NewResponder(f)
+
 	// Load tokens from config
 	for token, info := range cfg.Tokens {
 		registry.Register(token, tokens.TokenInfo{
@@ -58,16 +68,21 @@ func New(cfg Config) *Server {
 
 	// Load scenarios from config
 	for _, sc := range cfg.Scenarios {
-		scenarioEngine.Add(&scenario.Scenario{
-			Method: sc.Method,
-			Match:  sc.Match,
-			Times:  sc.Times,
-			Response: &scenario.ErrorResponse{
+		s := &scenario.Scenario{
+			Method:       sc.Method,
+			Match:        sc.Match,
+			Times:        sc.Times,
+			ResponseData: sc.ResponseData,
+		}
+		// Only add error response if error_code is specified
+		if sc.Response.ErrorCode > 0 {
+			s.Response = &scenario.ErrorResponse{
 				ErrorCode:   sc.Response.ErrorCode,
 				Description: sc.Response.Description,
 				RetryAfter:  sc.Response.RetryAfter,
-			},
-		})
+			}
+		}
+		scenarioEngine.Add(s)
 	}
 
 	// Enable token registry if any tokens are configured
@@ -89,7 +104,7 @@ func New(cfg Config) *Server {
 		scenarioEngine: scenarioEngine,
 		updateQueue:    updateQueue,
 		fileStore:      fileStore,
-		botHandler:     NewBotHandler(registry, scenarioEngine, updateQueue, registryEnabled),
+		botHandler:     NewBotHandler(registry, scenarioEngine, updateQueue, responder, registryEnabled),
 		controlHandler: NewControlHandler(scenarioEngine, registry, updateQueue),
 	}
 
