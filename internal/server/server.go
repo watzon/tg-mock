@@ -147,3 +147,9 @@ func (s *Server) Start() error {
 func (s *Server) Shutdown(ctx context.Context) error {
 	return s.httpServer.Shutdown(ctx)
 }
+
+// Router returns the chi.Router for testing purposes.
+// This allows using httptest.NewServer with the server's router.
+func (s *Server) Router() chi.Router {
+	return s.router
+}
