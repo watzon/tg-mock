@@ -14,16 +14,14 @@ builds:
       - CGO_ENABLED=0
     goos:
       - linux
-      # Phase 2: Uncomment these after Linux is verified
-      # - windows
-      # - darwin
+      - windows
+      - darwin
     goarch:
       - amd64
       - arm64
-    # Phase 2: Uncomment to exclude Windows ARM64
-    # ignore:
-    #   - goos: windows
-    #     goarch: arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
     ldflags:
       - -s -w
 
@@ -31,11 +29,10 @@ archives:
   - id: tg-mock-archive
     formats:
       - tar.gz
-    # Phase 2: Uncomment for Windows .zip files
-    # format_overrides:
-    #   - goos: windows
-    #     formats:
-    #       - zip
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
     name_template: >-
       {{ .ProjectName }}_
       {{- .Version }}_

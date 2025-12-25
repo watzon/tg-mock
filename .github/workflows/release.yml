@@ -4,59 +4,119 @@ on:
   release:
     types: [created]
   workflow_dispatch:
-    inputs:
-      snapshot:
-        description: 'Build snapshot (no version tag required)'
-        required: false
-        default: true
-        type: boolean
 
 permissions:
   contents: write
 
 jobs:
-  goreleaser:
-    name: GoReleaser
-    runs-on: ubuntu-latest
+  build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux
+          - runner: ubuntu-latest
+            goos: linux
+            goarch: amd64
+          - runner: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+          # macOS
+          - runner: macos-13
+            goos: darwin
+            goarch: amd64
+          - runner: macos-latest
+            goos: darwin
+            goarch: arm64
+          # Windows
+          - runner: windows-latest
+            goos: windows
+            goarch: amd64
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.21'
 
-      # Release build (triggered by GitHub Release)
-      - name: Run GoReleaser (Release)
-        if: github.event_name == 'release'
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          version: '~> v2'
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Get version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            echo "version=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=snapshot-$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          fi
 
-      # Manual build (triggered by workflow_dispatch)
-      - name: Run GoReleaser (Snapshot)
-        if: github.event_name == 'workflow_dispatch'
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          version: '~> v2'
-          args: release --snapshot --clean --skip=publish
+      - name: Build binary
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+        run: |
+          EXT=""
+          if [[ "${{ matrix.goos }}" == "windows" ]]; then
+            EXT=".exe"
+          fi
+          go build -ldflags="-s -w" -o "tg-mock${EXT}" ./cmd/tg-mock
 
-      # Upload artifacts for manual builds
-      - name: Upload artifacts
+      - name: Create archive (Unix)
+        if: matrix.goos != 'windows'
+        run: |
+          tar -czvf tg-mock_${{ steps.version.outputs.version }}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz tg-mock
+
+      - name: Create archive (Windows)
+        if: matrix.goos == 'windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path tg-mock.exe -DestinationPath tg-mock_${{ steps.version.outputs.version }}_${{ matrix.goos }}_${{ matrix.goarch }}.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tg-mock-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: tg-mock_${{ steps.version.outputs.version }}_${{ matrix.goos }}_${{ matrix.goarch }}.*
+          retention-days: 7
+
+  finalize:
+    name: Finalize Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: tg-mock-*
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          sha256sum * > checksums.txt
+          cat checksums.txt
+
+      - name: Upload combined artifact (manual builds)
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
-          name: tg-mock-binaries
-          path: |
-            dist/*.tar.gz
-            dist/*.zip
-            dist/checksums.txt
+          name: tg-mock-all-platforms
+          path: artifacts/*
           retention-days: 7
+
+      - name: Upload to release
+        if: github.event_name == 'release'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd artifacts
+          for file in *; do
+            gh release upload "${{ github.event.release.tag_name }}" "$file" --clobber
+          done
