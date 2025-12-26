@@ -8,6 +8,7 @@ A mock Telegram Bot API server for testing bots and bot libraries. Inspired by [
   - [Table of Contents](#table-of-contents)
   - [Background](#background)
   - [Install](#install)
+    - [Docker](#docker)
     - [Using Go](#using-go)
     - [From Source](#from-source)
   - [Usage](#usage)
@@ -46,6 +47,21 @@ tg-mock solves these problems by providing a drop-in replacement for `api.telegr
 - Handles file uploads with configurable storage
 
 ## Install
+
+### Docker
+
+```bash
+docker pull ghcr.io/watzon/tg-mock:latest
+
+# Run with defaults
+docker run -p 8081:8081 ghcr.io/watzon/tg-mock
+
+# With custom config and persistent storage
+docker run -p 8081:8081 \
+  -v ./config.yaml:/config.yaml \
+  -v ./data:/data \
+  ghcr.io/watzon/tg-mock --config /config.yaml
+```
 
 ### Using Go
 
