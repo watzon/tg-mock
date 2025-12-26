@@ -130,11 +130,11 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            # Set latest tag for releases
+            # Set latest tag for releases only
             type=raw,value=latest,enable=${{ steps.version.outputs.is_release == 'true' }}
-            # Version tag (e.g., 1.0.0)
-            type=raw,value=${{ steps.version.outputs.version }}
-            # SHA tag for all builds
+            # Version tag for releases only (e.g., 1.0.0)
+            type=raw,value=${{ steps.version.outputs.version }},enable=${{ steps.version.outputs.is_release == 'true' }}
+            # SHA tag for all builds (manual and release)
             type=sha,prefix=
 
       - name: Build and push Docker image
