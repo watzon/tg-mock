@@ -1,0 +1,40 @@
+# Git
+.git
+.gitignore
+
+# Build artifacts
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test files
+*_test.go
+*.test
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Documentation
+*.md
+!README.md
+LICENSE
+docs/
+
+# CI/CD
+.github/
+.goreleaser.yaml
+
+# Docker files (avoid recursive context)
+Dockerfile*
+docker-compose*.yml
+
+# Misc
+.DS_Store
+Thumbs.db
+*.log

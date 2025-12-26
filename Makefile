@@ -1,4 +1,8 @@
-.PHONY: build run generate test clean
+.PHONY: build run generate test clean docker-build docker-run
+
+# Docker settings
+DOCKER_IMAGE ?= ghcr.io/watzon/tg-mock
+DOCKER_TAG ?= latest
 
 build:
 	go build -o bin/tg-mock ./cmd/tg-mock
@@ -21,3 +25,13 @@ fetch-spec:
 
 fetch-errors:
 	curl -sL https://raw.githubusercontent.com/TelegramBotAPI/errors/master/errors.json > errors/errors.json
+
+# Docker targets
+docker-build:
+	docker build -t $(DOCKER_IMAGE):$(DOCKER_TAG) .
+
+docker-run: docker-build
+	docker run --rm -p 8081:8081 $(DOCKER_IMAGE):$(DOCKER_TAG)
+
+docker-push: docker-build
+	docker push $(DOCKER_IMAGE):$(DOCKER_TAG)
