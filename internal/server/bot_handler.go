@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/watzon/tg-mock/gen"
+	"github.com/watzon/tg-mock/internal/inspector"
 	"github.com/watzon/tg-mock/internal/scenario"
 	"github.com/watzon/tg-mock/internal/tokens"
 	"github.com/watzon/tg-mock/internal/updates"
@@ -21,10 +23,11 @@ type BotHandler struct {
 	updates         *updates.Queue
 	validator       *Validator
 	responder       *Responder
+	recorder        *inspector.Recorder
 }
 
 // NewBotHandler creates a new BotHandler
-func NewBotHandler(registry *tokens.Registry, scenarios *scenario.Engine, updates *updates.Queue, responder *Responder, registryEnabled bool) *BotHandler {
+func NewBotHandler(registry *tokens.Registry, scenarios *scenario.Engine, updates *updates.Queue, responder *Responder, recorder *inspector.Recorder, registryEnabled bool) *BotHandler {
 	return &BotHandler{
 		registry:        registry,
 		registryEnabled: registryEnabled,
@@ -32,6 +35,7 @@ func NewBotHandler(registry *tokens.Registry, scenarios *scenario.Engine, update
 		updates:         updates,
 		validator:       NewValidator(),
 		responder:       responder,
+		recorder:        recorder,
 	}
 }
 
@@ -53,6 +57,7 @@ func (h *BotHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	// Validate token format
 	if !tokens.ValidateFormat(token) {
 		h.writeError(w, 401, "Unauthorized: invalid token format")
+		h.recordRequest(token, method, nil, "", APIResponse{OK: false, ErrorCode: 401, Description: "Unauthorized: invalid token format"}, true, 401)
 		return
 	}
 
@@ -61,14 +66,17 @@ func (h *BotHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		info, ok := h.registry.Get(token)
 		if !ok {
 			h.writeError(w, 401, "Unauthorized: token not registered")
+			h.recordRequest(token, method, nil, "", APIResponse{OK: false, ErrorCode: 401, Description: "Unauthorized: token not registered"}, true, 401)
 			return
 		}
 		switch info.Status {
 		case tokens.StatusBanned:
 			h.writeError(w, 403, "Forbidden: bot was banned")
+			h.recordRequest(token, method, nil, "", APIResponse{OK: false, ErrorCode: 403, Description: "Forbidden: bot was banned"}, true, 403)
 			return
 		case tokens.StatusDeactivated:
 			h.writeError(w, 401, "Unauthorized: bot was deactivated")
+			h.recordRequest(token, method, nil, "", APIResponse{OK: false, ErrorCode: 401, Description: "Unauthorized: bot was deactivated"}, true, 401)
 			return
 		}
 	}
@@ -77,29 +85,39 @@ func (h *BotHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	spec, ok := gen.Methods[method]
 	if !ok {
 		h.writeError(w, 404, "Not Found: method not found")
+		h.recordRequest(token, method, nil, "", APIResponse{OK: false, ErrorCode: 404, Description: "Not Found: method not found"}, true, 404)
 		return
 	}
 
 	// Parse parameters
 	params, err := h.parseParams(r)
 	if err != nil {
-		h.writeError(w, 400, "Bad Request: "+err.Error())
+		desc := "Bad Request: " + err.Error()
+		h.writeError(w, 400, desc)
+		h.recordRequest(token, method, nil, "", APIResponse{OK: false, ErrorCode: 400, Description: desc}, true, 400)
 		return
 	}
 
 	// Check for header-based scenario
 	if scenarioName := r.Header.Get("X-TG-Mock-Scenario"); scenarioName != "" {
-		if resp := h.handleHeaderScenario(w, r, scenarioName); resp {
+		if resp := h.handleHeaderScenarioWithRecording(w, r, token, method, params, scenarioName); resp {
 			return
 		}
 	}
 
 	// Check for queued scenarios
 	var scenarioOverrides map[string]interface{}
+	var matchedScenarioID string
 	if s := h.scenarios.Find(method, params); s != nil {
 		s.Use()
+		matchedScenarioID = s.ID
 		if s.IsError() {
 			h.writeErrorResponse(w, s.Response)
+			h.recordRequest(token, method, params, matchedScenarioID, map[string]interface{}{
+				"ok":          false,
+				"error_code":  s.Response.ErrorCode,
+				"description": s.Response.Description,
+			}, true, s.Response.ErrorCode)
 			return
 		}
 		// Store response data overrides for later use
@@ -112,12 +130,15 @@ func (h *BotHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	if method == "getUpdates" {
 		result := h.handleGetUpdates(params)
 		h.writeSuccess(w, result)
+		h.recordRequest(token, method, params, matchedScenarioID, APIResponse{OK: true, Result: result}, false, 200)
 		return
 	}
 
 	// Validate request
 	if err := h.validator.Validate(spec, params); err != nil {
-		h.writeError(w, 400, "Bad Request: "+err.Error())
+		desc := "Bad Request: " + err.Error()
+		h.writeError(w, 400, desc)
+		h.recordRequest(token, method, params, matchedScenarioID, APIResponse{OK: false, ErrorCode: 400, Description: desc}, true, 400)
 		return
 	}
 
@@ -125,10 +146,12 @@ func (h *BotHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	result, err := h.responder.GenerateWithOverrides(spec, params, scenarioOverrides)
 	if err != nil {
 		h.writeError(w, 500, "Internal Server Error")
+		h.recordRequest(token, method, params, matchedScenarioID, APIResponse{OK: false, ErrorCode: 500, Description: "Internal Server Error"}, true, 500)
 		return
 	}
 
 	h.writeSuccess(w, result)
+	h.recordRequest(token, method, params, matchedScenarioID, APIResponse{OK: true, Result: result}, false, 200)
 }
 
 func (h *BotHandler) writeError(w http.ResponseWriter, code int, desc string) {
@@ -180,9 +203,9 @@ func (h *BotHandler) parseParams(r *http.Request) (map[string]interface{}, error
 	return params, nil
 }
 
-// handleHeaderScenario handles X-TG-Mock-Scenario header-based error scenarios.
-// It looks up pre-built errors by name and returns the appropriate error response.
-func (h *BotHandler) handleHeaderScenario(w http.ResponseWriter, r *http.Request, name string) bool {
+// handleHeaderScenarioWithRecording handles X-TG-Mock-Scenario header-based error scenarios
+// and records the request. It looks up pre-built errors by name and returns the appropriate error response.
+func (h *BotHandler) handleHeaderScenarioWithRecording(w http.ResponseWriter, r *http.Request, token, method string, params map[string]interface{}, name string) bool {
 	resp := scenario.GetBuiltinError(name)
 	if resp == nil {
 		return false
@@ -200,6 +223,20 @@ func (h *BotHandler) handleHeaderScenario(w http.ResponseWriter, r *http.Request
 	}
 
 	h.writeErrorResponse(w, resp)
+
+	// Record with header: prefix for scenario ID
+	response := map[string]interface{}{
+		"ok":          false,
+		"error_code":  resp.ErrorCode,
+		"description": resp.Description,
+	}
+	if resp.RetryAfter > 0 {
+		response["parameters"] = map[string]interface{}{
+			"retry_after": resp.RetryAfter,
+		}
+	}
+	h.recordRequest(token, method, params, "header:"+name, response, true, resp.ErrorCode)
+
 	return true
 }
 
@@ -261,4 +298,18 @@ func parseInt(s string) (int, error) {
 	var n int
 	err := json.Unmarshal([]byte(s), &n)
 	return n, err
+}
+
+// recordRequest records a request to the inspector
+func (h *BotHandler) recordRequest(token, method string, params map[string]interface{}, scenarioID string, response interface{}, isError bool, statusCode int) {
+	h.recorder.Record(inspector.RequestRecord{
+		Timestamp:  time.Now(),
+		Token:      token,
+		Method:     method,
+		Params:     params,
+		ScenarioID: scenarioID,
+		Response:   response,
+		IsError:    isError,
+		StatusCode: statusCode,
+	})
 }

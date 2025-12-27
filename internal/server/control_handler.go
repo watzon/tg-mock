@@ -4,8 +4,10 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/watzon/tg-mock/internal/inspector"
 	"github.com/watzon/tg-mock/internal/scenario"
 	"github.com/watzon/tg-mock/internal/tokens"
 	"github.com/watzon/tg-mock/internal/updates"
@@ -15,13 +17,15 @@ type ControlHandler struct {
 	scenarios *scenario.Engine
 	tokens    *tokens.Registry
 	updates   *updates.Queue
+	requests  *inspector.Recorder
 }
 
-func NewControlHandler(scenarios *scenario.Engine, tokens *tokens.Registry, updates *updates.Queue) *ControlHandler {
+func NewControlHandler(scenarios *scenario.Engine, tokens *tokens.Registry, updates *updates.Queue, requests *inspector.Recorder) *ControlHandler {
 	return &ControlHandler{
 		scenarios: scenarios,
 		tokens:    tokens,
 		updates:   updates,
+		requests:  requests,
 	}
 }
 
@@ -48,6 +52,12 @@ func (h *ControlHandler) Routes() chi.Router {
 		r.Get("/", h.listUpdates)
 		r.Post("/", h.addUpdate)
 		r.Delete("/", h.clearUpdates)
+	})
+
+	// Requests
+	r.Route("/requests", func(r chi.Router) {
+		r.Get("/", h.listRequests)
+		r.Delete("/", h.clearRequests)
 	})
 
 	// State
@@ -176,18 +186,45 @@ func (h *ControlHandler) clearUpdates(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// Requests handlers
+
+func (h *ControlHandler) listRequests(w http.ResponseWriter, r *http.Request) {
+	method := r.URL.Query().Get("method")
+	token := r.URL.Query().Get("token")
+	limit := 100
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+
+	requests := h.requests.List(method, token, limit)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"requests": requests,
+		"count":    h.requests.Count(),
+	})
+}
+
+func (h *ControlHandler) clearRequests(w http.ResponseWriter, r *http.Request) {
+	h.requests.Clear()
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // State handlers
 
 func (h *ControlHandler) reset(w http.ResponseWriter, r *http.Request) {
 	h.scenarios.Clear()
 	h.updates.Clear()
+	h.requests.Clear()
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *ControlHandler) getState(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"scenarios_count": len(h.scenarios.List()),
-		"updates_pending": h.updates.Pending(),
+		"scenarios_count":   len(h.scenarios.List()),
+		"updates_pending":   h.updates.Pending(),
+		"requests_recorded": h.requests.Count(),
 	})
 }

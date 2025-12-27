@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/watzon/tg-mock/internal/config"
 	"github.com/watzon/tg-mock/internal/faker"
+	"github.com/watzon/tg-mock/internal/inspector"
 	"github.com/watzon/tg-mock/internal/scenario"
 	"github.com/watzon/tg-mock/internal/storage"
 	"github.com/watzon/tg-mock/internal/tokens"
@@ -18,15 +19,16 @@ import (
 )
 
 type Server struct {
-	router         chi.Router
-	httpServer     *http.Server
-	port           int
-	tokenRegistry  *tokens.Registry
-	scenarioEngine *scenario.Engine
-	updateQueue    *updates.Queue
-	fileStore      storage.Store
-	botHandler     *BotHandler
-	controlHandler *ControlHandler
+	router          chi.Router
+	httpServer      *http.Server
+	port            int
+	tokenRegistry   *tokens.Registry
+	scenarioEngine  *scenario.Engine
+	updateQueue     *updates.Queue
+	requestRecorder *inspector.Recorder
+	fileStore       storage.Store
+	botHandler      *BotHandler
+	controlHandler  *ControlHandler
 }
 
 type Config struct {
@@ -49,6 +51,7 @@ func New(cfg Config) *Server {
 	registry := tokens.NewRegistry()
 	scenarioEngine := scenario.NewEngine()
 	updateQueue := updates.NewQueue()
+	requestRecorder := inspector.NewRecorder()
 
 	// Create faker with configured seed
 	f := faker.New(faker.Config{
@@ -98,14 +101,15 @@ func New(cfg Config) *Server {
 	}
 
 	s := &Server{
-		router:         r,
-		port:           cfg.Port,
-		tokenRegistry:  registry,
-		scenarioEngine: scenarioEngine,
-		updateQueue:    updateQueue,
-		fileStore:      fileStore,
-		botHandler:     NewBotHandler(registry, scenarioEngine, updateQueue, responder, registryEnabled),
-		controlHandler: NewControlHandler(scenarioEngine, registry, updateQueue),
+		router:          r,
+		port:            cfg.Port,
+		tokenRegistry:   registry,
+		scenarioEngine:  scenarioEngine,
+		updateQueue:     updateQueue,
+		requestRecorder: requestRecorder,
+		fileStore:       fileStore,
+		botHandler:      NewBotHandler(registry, scenarioEngine, updateQueue, responder, requestRecorder, registryEnabled),
+		controlHandler:  NewControlHandler(scenarioEngine, registry, updateQueue, requestRecorder),
 	}
 
 	s.setupRoutes()
