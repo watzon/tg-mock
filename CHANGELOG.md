@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2025-12-26
+
+### Added
+
+- 32 new built-in error scenarios for comprehensive Telegram API error testing
+  - Chat errors: `chat_admin_required`, `chat_not_modified`, `chat_restricted`, `chat_write_forbidden`, `channel_private`, `group_upgraded`, `supergroup_channel_only`, `not_in_chat`, `topic_not_modified`
+  - User errors: `user_id_invalid`, `user_is_admin`, `participant_id_invalid`, `cant_remove_owner`
+  - Message errors: `message_to_delete_not_found`, `message_id_invalid`, `message_thread_not_found`
+  - Permission errors: `no_rights_to_send`, `not_enough_rights`, `not_enough_rights_pin`, `not_enough_rights_restrict`, `not_enough_rights_send_text`
+  - Admin/other errors: `admin_rank_emoji_not_allowed`, `inline_button_url_invalid`, `hide_requester_missing`
+  - Forbidden variants: `bot_kicked_channel`, `bot_kicked_group`, `bot_kicked_supergroup`
+
+### Changed
+
+- README: Reorganized built-in scenarios into collapsible sections by category
+
 ## [0.2.1] - 2025-12-26
 
 ### Added

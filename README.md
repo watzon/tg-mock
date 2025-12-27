@@ -322,24 +322,137 @@ curl -H "X-TG-Mock-Scenario: chat_not_found" \
 
 #### Available Built-in Scenarios
 
-| Scenario               | Error Code | Description                                                   |
-| ---------------------- | ---------- | ------------------------------------------------------------- |
-| `bad_request`          | 400        | Bad Request                                                   |
-| `chat_not_found`       | 400        | Bad Request: chat not found                                   |
-| `user_not_found`       | 400        | Bad Request: user not found                                   |
-| `message_not_found`    | 400        | Bad Request: message to edit not found                        |
-| `message_not_modified` | 400        | Bad Request: message is not modified                          |
-| `message_too_long`     | 400        | Bad Request: message is too long                              |
-| `file_too_big`         | 400        | Bad Request: file is too big                                  |
-| `invalid_file_id`      | 400        | Bad Request: invalid file id                                  |
-| `unauthorized`         | 401        | Unauthorized                                                  |
-| `forbidden`            | 403        | Forbidden                                                     |
-| `bot_blocked`          | 403        | Forbidden: bot was blocked by the user                        |
-| `bot_kicked`           | 403        | Forbidden: bot was kicked from the chat                       |
-| `cant_initiate`        | 403        | Forbidden: bot can't initiate conversation with a user        |
-| `webhook_active`       | 409        | Conflict: can't use getUpdates method while webhook is active |
-| `rate_limit`           | 429        | Too Many Requests: retry after 30                             |
-| `flood_wait`           | 429        | Flood control exceeded. Retry in 60 seconds                   |
+<details>
+<summary><strong>400 Bad Request - Chat Errors</strong></summary>
+
+| Scenario | Description |
+| -------- | ----------- |
+| `bad_request` | Bad Request |
+| `chat_not_found` | Bad Request: chat not found |
+| `chat_admin_required` | Bad Request: CHAT_ADMIN_REQUIRED |
+| `chat_not_modified` | Bad Request: CHAT_NOT_MODIFIED |
+| `chat_restricted` | Bad Request: CHAT_RESTRICTED |
+| `chat_write_forbidden` | Bad Request: CHAT_WRITE_FORBIDDEN |
+| `channel_private` | Bad Request: CHANNEL_PRIVATE |
+| `group_deactivated` | Bad Request: group is deactivated |
+| `group_upgraded` | Bad Request: group chat was upgraded to a supergroup chat |
+| `supergroup_channel_only` | Bad Request: method is available for supergroup and channel chats only |
+| `not_in_chat` | Bad Request: not in the chat |
+| `topic_not_modified` | Bad Request: TOPIC_NOT_MODIFIED |
+
+</details>
+
+<details>
+<summary><strong>400 Bad Request - User Errors</strong></summary>
+
+| Scenario | Description |
+| -------- | ----------- |
+| `user_not_found` | Bad Request: user not found |
+| `user_id_invalid` | Bad Request: USER_ID_INVALID |
+| `user_is_admin` | Bad Request: user is an administrator of the chat |
+| `participant_id_invalid` | Bad Request: PARTICIPANT_ID_INVALID |
+| `cant_remove_owner` | Bad Request: can't remove chat owner |
+
+</details>
+
+<details>
+<summary><strong>400 Bad Request - Message Errors</strong></summary>
+
+| Scenario | Description |
+| -------- | ----------- |
+| `message_not_found` | Bad Request: message to edit not found |
+| `message_not_modified` | Bad Request: message is not modified |
+| `message_text_empty` | Bad Request: message text is empty |
+| `message_too_long` | Bad Request: message is too long |
+| `message_cant_be_edited` | Bad Request: message can't be edited |
+| `message_cant_be_deleted` | Bad Request: message can't be deleted |
+| `message_to_delete_not_found` | Bad Request: message to delete not found |
+| `message_id_invalid` | Bad Request: MESSAGE_ID_INVALID |
+| `message_thread_not_found` | Bad Request: message thread not found |
+| `reply_message_not_found` | Bad Request: reply message not found |
+
+</details>
+
+<details>
+<summary><strong>400 Bad Request - Permission Errors</strong></summary>
+
+| Scenario | Description |
+| -------- | ----------- |
+| `no_rights_to_send` | Bad Request: have no rights to send a message |
+| `not_enough_rights` | Bad Request: not enough rights |
+| `not_enough_rights_pin` | Bad Request: not enough rights to manage pinned messages in the chat |
+| `not_enough_rights_restrict` | Bad Request: not enough rights to restrict/unrestrict chat member |
+| `not_enough_rights_send_text` | Bad Request: not enough rights to send text messages to the chat |
+| `admin_rank_emoji_not_allowed` | Bad Request: ADMIN_RANK_EMOJI_NOT_ALLOWED |
+
+</details>
+
+<details>
+<summary><strong>400 Bad Request - Other</strong></summary>
+
+| Scenario | Description |
+| -------- | ----------- |
+| `button_url_invalid` | Bad Request: BUTTON_URL_INVALID |
+| `inline_button_url_invalid` | Bad Request: inline keyboard button URL |
+| `file_too_big` | Bad Request: file is too big |
+| `invalid_file_id` | Bad Request: invalid file id |
+| `entities_too_long` | Bad Request: entities too long |
+| `member_not_found` | Bad Request: member not found |
+| `peer_id_invalid` | Bad Request: PEER_ID_INVALID |
+| `wrong_parameter_action` | Bad Request: wrong parameter action in request |
+| `hide_requester_missing` | Bad Request: HIDE_REQUESTER_MISSING |
+
+</details>
+
+<details>
+<summary><strong>401 Unauthorized</strong></summary>
+
+| Scenario | Description |
+| -------- | ----------- |
+| `unauthorized` | Unauthorized |
+
+</details>
+
+<details>
+<summary><strong>403 Forbidden</strong></summary>
+
+| Scenario | Description |
+| -------- | ----------- |
+| `forbidden` | Forbidden |
+| `bot_blocked` | Forbidden: bot was blocked by the user |
+| `bot_kicked` | Forbidden: bot was kicked from the chat |
+| `bot_kicked_channel` | Forbidden: bot was kicked from the channel chat |
+| `bot_kicked_group` | Forbidden: bot was kicked from the group chat |
+| `bot_kicked_supergroup` | Forbidden: bot was kicked from the supergroup chat |
+| `not_member_channel` | Forbidden: bot is not a member of the channel chat |
+| `not_member_supergroup` | Forbidden: bot is not a member of the supergroup chat |
+| `cant_initiate` | Forbidden: bot can't initiate conversation with a user |
+| `cant_send_to_bots` | Forbidden: bot can't send messages to bots |
+| `user_deactivated` | Forbidden: user is deactivated |
+| `not_enough_rights_text` | Forbidden: not enough rights to send text messages |
+| `not_enough_rights_photo` | Forbidden: not enough rights to send photos |
+
+</details>
+
+<details>
+<summary><strong>409 Conflict</strong></summary>
+
+| Scenario | Description |
+| -------- | ----------- |
+| `webhook_active` | Conflict: can't use getUpdates method while webhook is active |
+| `terminated_by_long_poll` | Conflict: terminated by other long poll |
+
+</details>
+
+<details>
+<summary><strong>429 Rate Limit</strong></summary>
+
+| Scenario | Description |
+| -------- | ----------- |
+| `rate_limit` | Too Many Requests: retry after 30 |
+| `flood_wait` | Flood control exceeded. Retry in 60 seconds |
+
+</details>
 
 ## Examples
 
