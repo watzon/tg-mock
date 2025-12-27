@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2025-12-26
+
+### Added
+
+- Docker support with multi-arch builds (linux/amd64, linux/arm64)
+- Multi-stage Dockerfile with scratch base (~6.7MB image)
+- `docker-build`, `docker-run`, `docker-push` Makefile targets
+
+### Fixed
+
+- CI: Docker images only tagged with version on releases (manual runs get SHA only)
+
+### Documentation
+
+- Add Docker installation instructions to README
+
 ## [0.2.0] - 2025-12-25
 
 ### Added
