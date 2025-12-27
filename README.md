@@ -22,12 +22,14 @@ A mock Telegram Bot API server for testing bots and bot libraries. Inspired by [
     - [Scenarios](#scenarios)
     - [Response Data Overrides](#response-data-overrides)
     - [Updates](#updates)
+    - [Request Inspector](#request-inspector)
     - [Header-based Errors](#header-based-errors)
       - [Available Built-in Scenarios](#available-built-in-scenarios)
   - [Examples](#examples)
     - [Testing Error Handling](#testing-error-handling)
     - [Simulating Incoming Messages](#simulating-incoming-messages)
     - [Custom Response Data](#custom-response-data)
+    - [Verifying Bot Behavior](#verifying-bot-behavior)
   - [Contributing](#contributing)
   - [License](#license)
 
@@ -43,6 +45,7 @@ tg-mock solves these problems by providing a drop-in replacement for `api.telegr
 - Generates realistic responses for all Bot API methods
 - Supports scenario-based error simulation
 - Provides a control API for injecting updates and managing test scenarios
+- Records all requests for inspection and assertion in tests
 - Includes built-in error responses for common Telegram API errors
 - Handles file uploads with configurable storage
 
@@ -302,6 +305,45 @@ curl -X POST http://localhost:8081/__control/updates \
 curl http://localhost:8081/__control/updates
 ```
 
+### Request Inspector
+
+The request inspector records all Bot API requests made to the mock server. This is invaluable for verifying your bot's behavior in tests—you can assert that your bot made the expected API calls with the correct parameters.
+
+```bash
+# List all recorded requests
+curl http://localhost:8081/__control/requests
+
+# Filter by method
+curl "http://localhost:8081/__control/requests?method=sendMessage"
+
+# Filter by token
+curl "http://localhost:8081/__control/requests?token=123:abc"
+
+# Combine filters with limit
+curl "http://localhost:8081/__control/requests?method=sendMessage&token=123:abc&limit=10"
+
+# Clear recorded requests
+curl -X DELETE http://localhost:8081/__control/requests
+```
+
+Each recorded request includes:
+
+| Field         | Description                       |
+| ------------- | --------------------------------- |
+| `id`          | Unique request ID                 |
+| `timestamp`   | When the request was received     |
+| `token`       | Bot token used                    |
+| `method`      | API method called                 |
+| `params`      | Request parameters                |
+| `scenario_id` | Matched scenario ID (if any)      |
+| `response`    | Response returned to the bot      |
+| `is_error`    | Whether the response was an error |
+| `status_code` | HTTP status code returned         |
+
+The inspector records **all** requests, including those that fail authentication. This helps debug client-side issues like malformed tokens.
+
+When a header-based scenario is triggered, the `scenario_id` is prefixed with `header:` (e.g., `header:rate_limit`).
+
 ### Header-based Errors
 
 Use the `X-TG-Mock-Scenario` header to trigger built-in error responses:
@@ -325,90 +367,90 @@ curl -H "X-TG-Mock-Scenario: chat_not_found" \
 <details>
 <summary><strong>400 Bad Request - Chat Errors</strong></summary>
 
-| Scenario | Description |
-| -------- | ----------- |
-| `bad_request` | Bad Request |
-| `chat_not_found` | Bad Request: chat not found |
-| `chat_admin_required` | Bad Request: CHAT_ADMIN_REQUIRED |
-| `chat_not_modified` | Bad Request: CHAT_NOT_MODIFIED |
-| `chat_restricted` | Bad Request: CHAT_RESTRICTED |
-| `chat_write_forbidden` | Bad Request: CHAT_WRITE_FORBIDDEN |
-| `channel_private` | Bad Request: CHANNEL_PRIVATE |
-| `group_deactivated` | Bad Request: group is deactivated |
-| `group_upgraded` | Bad Request: group chat was upgraded to a supergroup chat |
+| Scenario                  | Description                                                            |
+| ------------------------- | ---------------------------------------------------------------------- |
+| `bad_request`             | Bad Request                                                            |
+| `chat_not_found`          | Bad Request: chat not found                                            |
+| `chat_admin_required`     | Bad Request: CHAT_ADMIN_REQUIRED                                       |
+| `chat_not_modified`       | Bad Request: CHAT_NOT_MODIFIED                                         |
+| `chat_restricted`         | Bad Request: CHAT_RESTRICTED                                           |
+| `chat_write_forbidden`    | Bad Request: CHAT_WRITE_FORBIDDEN                                      |
+| `channel_private`         | Bad Request: CHANNEL_PRIVATE                                           |
+| `group_deactivated`       | Bad Request: group is deactivated                                      |
+| `group_upgraded`          | Bad Request: group chat was upgraded to a supergroup chat              |
 | `supergroup_channel_only` | Bad Request: method is available for supergroup and channel chats only |
-| `not_in_chat` | Bad Request: not in the chat |
-| `topic_not_modified` | Bad Request: TOPIC_NOT_MODIFIED |
+| `not_in_chat`             | Bad Request: not in the chat                                           |
+| `topic_not_modified`      | Bad Request: TOPIC_NOT_MODIFIED                                        |
 
 </details>
 
 <details>
 <summary><strong>400 Bad Request - User Errors</strong></summary>
 
-| Scenario | Description |
-| -------- | ----------- |
-| `user_not_found` | Bad Request: user not found |
-| `user_id_invalid` | Bad Request: USER_ID_INVALID |
-| `user_is_admin` | Bad Request: user is an administrator of the chat |
-| `participant_id_invalid` | Bad Request: PARTICIPANT_ID_INVALID |
-| `cant_remove_owner` | Bad Request: can't remove chat owner |
+| Scenario                 | Description                                       |
+| ------------------------ | ------------------------------------------------- |
+| `user_not_found`         | Bad Request: user not found                       |
+| `user_id_invalid`        | Bad Request: USER_ID_INVALID                      |
+| `user_is_admin`          | Bad Request: user is an administrator of the chat |
+| `participant_id_invalid` | Bad Request: PARTICIPANT_ID_INVALID               |
+| `cant_remove_owner`      | Bad Request: can't remove chat owner              |
 
 </details>
 
 <details>
 <summary><strong>400 Bad Request - Message Errors</strong></summary>
 
-| Scenario | Description |
-| -------- | ----------- |
-| `message_not_found` | Bad Request: message to edit not found |
-| `message_not_modified` | Bad Request: message is not modified |
-| `message_text_empty` | Bad Request: message text is empty |
-| `message_too_long` | Bad Request: message is too long |
-| `message_cant_be_edited` | Bad Request: message can't be edited |
-| `message_cant_be_deleted` | Bad Request: message can't be deleted |
+| Scenario                      | Description                              |
+| ----------------------------- | ---------------------------------------- |
+| `message_not_found`           | Bad Request: message to edit not found   |
+| `message_not_modified`        | Bad Request: message is not modified     |
+| `message_text_empty`          | Bad Request: message text is empty       |
+| `message_too_long`            | Bad Request: message is too long         |
+| `message_cant_be_edited`      | Bad Request: message can't be edited     |
+| `message_cant_be_deleted`     | Bad Request: message can't be deleted    |
 | `message_to_delete_not_found` | Bad Request: message to delete not found |
-| `message_id_invalid` | Bad Request: MESSAGE_ID_INVALID |
-| `message_thread_not_found` | Bad Request: message thread not found |
-| `reply_message_not_found` | Bad Request: reply message not found |
+| `message_id_invalid`          | Bad Request: MESSAGE_ID_INVALID          |
+| `message_thread_not_found`    | Bad Request: message thread not found    |
+| `reply_message_not_found`     | Bad Request: reply message not found     |
 
 </details>
 
 <details>
 <summary><strong>400 Bad Request - Permission Errors</strong></summary>
 
-| Scenario | Description |
-| -------- | ----------- |
-| `no_rights_to_send` | Bad Request: have no rights to send a message |
-| `not_enough_rights` | Bad Request: not enough rights |
-| `not_enough_rights_pin` | Bad Request: not enough rights to manage pinned messages in the chat |
-| `not_enough_rights_restrict` | Bad Request: not enough rights to restrict/unrestrict chat member |
-| `not_enough_rights_send_text` | Bad Request: not enough rights to send text messages to the chat |
-| `admin_rank_emoji_not_allowed` | Bad Request: ADMIN_RANK_EMOJI_NOT_ALLOWED |
+| Scenario                       | Description                                                          |
+| ------------------------------ | -------------------------------------------------------------------- |
+| `no_rights_to_send`            | Bad Request: have no rights to send a message                        |
+| `not_enough_rights`            | Bad Request: not enough rights                                       |
+| `not_enough_rights_pin`        | Bad Request: not enough rights to manage pinned messages in the chat |
+| `not_enough_rights_restrict`   | Bad Request: not enough rights to restrict/unrestrict chat member    |
+| `not_enough_rights_send_text`  | Bad Request: not enough rights to send text messages to the chat     |
+| `admin_rank_emoji_not_allowed` | Bad Request: ADMIN_RANK_EMOJI_NOT_ALLOWED                            |
 
 </details>
 
 <details>
 <summary><strong>400 Bad Request - Other</strong></summary>
 
-| Scenario | Description |
-| -------- | ----------- |
-| `button_url_invalid` | Bad Request: BUTTON_URL_INVALID |
-| `inline_button_url_invalid` | Bad Request: inline keyboard button URL |
-| `file_too_big` | Bad Request: file is too big |
-| `invalid_file_id` | Bad Request: invalid file id |
-| `entities_too_long` | Bad Request: entities too long |
-| `member_not_found` | Bad Request: member not found |
-| `peer_id_invalid` | Bad Request: PEER_ID_INVALID |
-| `wrong_parameter_action` | Bad Request: wrong parameter action in request |
-| `hide_requester_missing` | Bad Request: HIDE_REQUESTER_MISSING |
+| Scenario                    | Description                                    |
+| --------------------------- | ---------------------------------------------- |
+| `button_url_invalid`        | Bad Request: BUTTON_URL_INVALID                |
+| `inline_button_url_invalid` | Bad Request: inline keyboard button URL        |
+| `file_too_big`              | Bad Request: file is too big                   |
+| `invalid_file_id`           | Bad Request: invalid file id                   |
+| `entities_too_long`         | Bad Request: entities too long                 |
+| `member_not_found`          | Bad Request: member not found                  |
+| `peer_id_invalid`           | Bad Request: PEER_ID_INVALID                   |
+| `wrong_parameter_action`    | Bad Request: wrong parameter action in request |
+| `hide_requester_missing`    | Bad Request: HIDE_REQUESTER_MISSING            |
 
 </details>
 
 <details>
 <summary><strong>401 Unauthorized</strong></summary>
 
-| Scenario | Description |
-| -------- | ----------- |
+| Scenario       | Description  |
+| -------------- | ------------ |
 | `unauthorized` | Unauthorized |
 
 </details>
@@ -416,40 +458,40 @@ curl -H "X-TG-Mock-Scenario: chat_not_found" \
 <details>
 <summary><strong>403 Forbidden</strong></summary>
 
-| Scenario | Description |
-| -------- | ----------- |
-| `forbidden` | Forbidden |
-| `bot_blocked` | Forbidden: bot was blocked by the user |
-| `bot_kicked` | Forbidden: bot was kicked from the chat |
-| `bot_kicked_channel` | Forbidden: bot was kicked from the channel chat |
-| `bot_kicked_group` | Forbidden: bot was kicked from the group chat |
-| `bot_kicked_supergroup` | Forbidden: bot was kicked from the supergroup chat |
-| `not_member_channel` | Forbidden: bot is not a member of the channel chat |
-| `not_member_supergroup` | Forbidden: bot is not a member of the supergroup chat |
-| `cant_initiate` | Forbidden: bot can't initiate conversation with a user |
-| `cant_send_to_bots` | Forbidden: bot can't send messages to bots |
-| `user_deactivated` | Forbidden: user is deactivated |
-| `not_enough_rights_text` | Forbidden: not enough rights to send text messages |
-| `not_enough_rights_photo` | Forbidden: not enough rights to send photos |
+| Scenario                  | Description                                            |
+| ------------------------- | ------------------------------------------------------ |
+| `forbidden`               | Forbidden                                              |
+| `bot_blocked`             | Forbidden: bot was blocked by the user                 |
+| `bot_kicked`              | Forbidden: bot was kicked from the chat                |
+| `bot_kicked_channel`      | Forbidden: bot was kicked from the channel chat        |
+| `bot_kicked_group`        | Forbidden: bot was kicked from the group chat          |
+| `bot_kicked_supergroup`   | Forbidden: bot was kicked from the supergroup chat     |
+| `not_member_channel`      | Forbidden: bot is not a member of the channel chat     |
+| `not_member_supergroup`   | Forbidden: bot is not a member of the supergroup chat  |
+| `cant_initiate`           | Forbidden: bot can't initiate conversation with a user |
+| `cant_send_to_bots`       | Forbidden: bot can't send messages to bots             |
+| `user_deactivated`        | Forbidden: user is deactivated                         |
+| `not_enough_rights_text`  | Forbidden: not enough rights to send text messages     |
+| `not_enough_rights_photo` | Forbidden: not enough rights to send photos            |
 
 </details>
 
 <details>
 <summary><strong>409 Conflict</strong></summary>
 
-| Scenario | Description |
-| -------- | ----------- |
-| `webhook_active` | Conflict: can't use getUpdates method while webhook is active |
-| `terminated_by_long_poll` | Conflict: terminated by other long poll |
+| Scenario                  | Description                                                   |
+| ------------------------- | ------------------------------------------------------------- |
+| `webhook_active`          | Conflict: can't use getUpdates method while webhook is active |
+| `terminated_by_long_poll` | Conflict: terminated by other long poll                       |
 
 </details>
 
 <details>
 <summary><strong>429 Rate Limit</strong></summary>
 
-| Scenario | Description |
-| -------- | ----------- |
-| `rate_limit` | Too Many Requests: retry after 30 |
+| Scenario     | Description                                 |
+| ------------ | ------------------------------------------- |
+| `rate_limit` | Too Many Requests: retry after 30           |
 | `flood_wait` | Flood control exceeded. Retry in 60 seconds |
 
 </details>
@@ -527,6 +569,78 @@ curl -X POST http://localhost:8081/__control/scenarios \
       ]
     }
   }'
+```
+
+### Verifying Bot Behavior
+
+Use the request inspector to verify your bot makes the correct API calls:
+
+```bash
+# Start the mock server
+tg-mock &
+
+# Clear any previous requests
+curl -X DELETE http://localhost:8081/__control/requests
+
+# Inject a /start command for your bot to process
+curl -X POST http://localhost:8081/__control/updates \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": {
+      "message_id": 1,
+      "text": "/start",
+      "chat": {"id": 123, "type": "private"},
+      "from": {"id": 456, "is_bot": false, "first_name": "User"}
+    }
+  }'
+
+# Let your bot process the update (it calls getUpdates and responds)
+sleep 1
+
+# Verify your bot sent the expected welcome message
+curl -s "http://localhost:8081/__control/requests?method=sendMessage" | jq '.requests[] | select(.params.chat_id == 123) | .params.text'
+# Should output your bot's welcome message
+
+# Check the full request details
+curl -s http://localhost:8081/__control/requests | jq '.requests[-1]'
+# Returns:
+# {
+#   "id": 2,
+#   "timestamp": "2024-01-15T10:30:00Z",
+#   "token": "123:abc",
+#   "method": "sendMessage",
+#   "params": {"chat_id": 123, "text": "Welcome! I'm your bot."},
+#   "response": {"ok": true, "result": {...}},
+#   "is_error": false,
+#   "status_code": 200
+# }
+```
+
+This pattern is especially useful for integration tests:
+
+```go
+// Go test example
+func TestBotRespondsToStart(t *testing.T) {
+    // Clear requests
+    http.NewRequest("DELETE", mockURL+"/__control/requests", nil)
+
+    // Inject /start command
+    injectUpdate(startCommand)
+
+    // Wait for bot to process
+    time.Sleep(100 * time.Millisecond)
+
+    // Verify bot sent welcome message
+    resp, _ := http.Get(mockURL + "/__control/requests?method=sendMessage")
+    var result struct {
+        Requests []struct {
+            Params map[string]interface{} `json:"params"`
+        } `json:"requests"`
+    }
+    json.NewDecoder(resp.Body).Decode(&result)
+
+    assert.Equal(t, "Welcome!", result.Requests[0].Params["text"])
+}
 ```
 
 ## Contributing
