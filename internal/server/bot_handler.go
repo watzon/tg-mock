@@ -13,6 +13,7 @@ import (
 	"github.com/watzon/tg-mock/internal/scenario"
 	"github.com/watzon/tg-mock/internal/tokens"
 	"github.com/watzon/tg-mock/internal/updates"
+	"github.com/watzon/tg-mock/internal/webhook"
 )
 
 // BotHandler handles Bot API requests with token validation
@@ -24,10 +25,11 @@ type BotHandler struct {
 	validator       *Validator
 	responder       *Responder
 	recorder        *inspector.Recorder
+	webhooks        *webhook.Registry
 }
 
 // NewBotHandler creates a new BotHandler
-func NewBotHandler(registry *tokens.Registry, scenarios *scenario.Engine, updates *updates.Queue, responder *Responder, recorder *inspector.Recorder, registryEnabled bool) *BotHandler {
+func NewBotHandler(registry *tokens.Registry, scenarios *scenario.Engine, updates *updates.Queue, responder *Responder, recorder *inspector.Recorder, webhooks *webhook.Registry, registryEnabled bool) *BotHandler {
 	return &BotHandler{
 		registry:        registry,
 		registryEnabled: registryEnabled,
@@ -36,6 +38,7 @@ func NewBotHandler(registry *tokens.Registry, scenarios *scenario.Engine, update
 		validator:       NewValidator(),
 		responder:       responder,
 		recorder:        recorder,
+		webhooks:        webhooks,
 	}
 }
 
@@ -79,6 +82,19 @@ func (h *BotHandler) Handle(w http.ResponseWriter, r *http.Request) {
 			h.recordRequest(token, method, nil, "", APIResponse{OK: false, ErrorCode: 401, Description: "Unauthorized: bot was deactivated"}, true, 401)
 			return
 		}
+	}
+
+	// Handle webhook methods before method lookup
+	switch method {
+	case "setWebhook":
+		h.handleSetWebhook(w, token, h.parseParamsOrEmpty(r))
+		return
+	case "deleteWebhook":
+		h.handleDeleteWebhook(w, token, h.parseParamsOrEmpty(r))
+		return
+	case "getWebhookInfo":
+		h.handleGetWebhookInfo(w, token)
+		return
 	}
 
 	// Check method exists
@@ -128,6 +144,13 @@ func (h *BotHandler) Handle(w http.ResponseWriter, r *http.Request) {
 
 	// Handle getUpdates specially
 	if method == "getUpdates" {
+		// Check for webhook conflict
+		if h.webhooks.IsActive(token) {
+			desc := "Conflict: can't use getUpdates method while webhook is active"
+			h.writeError(w, 409, desc)
+			h.recordRequest(token, method, params, matchedScenarioID, APIResponse{OK: false, ErrorCode: 409, Description: desc}, true, 409)
+			return
+		}
 		result := h.handleGetUpdates(params)
 		h.writeSuccess(w, result)
 		h.recordRequest(token, method, params, matchedScenarioID, APIResponse{OK: true, Result: result}, false, 200)
@@ -312,4 +335,82 @@ func (h *BotHandler) recordRequest(token, method string, params map[string]inter
 		IsError:    isError,
 		StatusCode: statusCode,
 	})
+}
+
+// parseParamsOrEmpty parses request parameters, returning empty map on error
+func (h *BotHandler) parseParamsOrEmpty(r *http.Request) map[string]interface{} {
+	params, err := h.parseParams(r)
+	if err != nil {
+		return make(map[string]interface{})
+	}
+	return params
+}
+
+// handleSetWebhook handles the setWebhook Bot API method
+func (h *BotHandler) handleSetWebhook(w http.ResponseWriter, token string, params map[string]interface{}) {
+	url, _ := params["url"].(string)
+
+	// Empty URL means delete webhook
+	if url == "" {
+		h.webhooks.Delete(token)
+		if dropPending, _ := params["drop_pending_updates"].(bool); dropPending {
+			h.updates.Clear()
+		}
+		h.writeSuccess(w, true)
+		h.recordRequest(token, "setWebhook", params, "", APIResponse{OK: true, Result: true}, false, 200)
+		return
+	}
+
+	// Build webhook config from params
+	cfg := &webhook.Config{
+		URL: url,
+	}
+
+	if secret, ok := params["secret_token"].(string); ok {
+		cfg.SecretToken = secret
+	}
+	if ip, ok := params["ip_address"].(string); ok {
+		cfg.IPAddress = ip
+	}
+	if maxConn, ok := params["max_connections"].(float64); ok {
+		cfg.MaxConnections = int(maxConn)
+	}
+	if allowed, ok := params["allowed_updates"].([]interface{}); ok {
+		for _, v := range allowed {
+			if s, ok := v.(string); ok {
+				cfg.AllowedUpdates = append(cfg.AllowedUpdates, s)
+			}
+		}
+	}
+
+	h.webhooks.Set(token, cfg)
+
+	// Handle drop_pending_updates
+	if dropPending, _ := params["drop_pending_updates"].(bool); dropPending {
+		h.updates.Clear()
+	}
+
+	h.writeSuccess(w, true)
+	h.recordRequest(token, "setWebhook", params, "", APIResponse{OK: true, Result: true}, false, 200)
+}
+
+// handleDeleteWebhook handles the deleteWebhook Bot API method
+func (h *BotHandler) handleDeleteWebhook(w http.ResponseWriter, token string, params map[string]interface{}) {
+	h.webhooks.Delete(token)
+
+	// Handle drop_pending_updates
+	if dropPending, _ := params["drop_pending_updates"].(bool); dropPending {
+		h.updates.Clear()
+	}
+
+	h.writeSuccess(w, true)
+	h.recordRequest(token, "deleteWebhook", params, "", APIResponse{OK: true, Result: true}, false, 200)
+}
+
+// handleGetWebhookInfo handles the getWebhookInfo Bot API method
+func (h *BotHandler) handleGetWebhookInfo(w http.ResponseWriter, token string) {
+	pendingCount := h.updates.Pending()
+	info := h.webhooks.GetInfo(token, pendingCount)
+	h.writeSuccess(w, info)
+	h.recordRequest(token, "getWebhookInfo", nil, "", APIResponse{OK: true, Result: info}, false, 200)
 }

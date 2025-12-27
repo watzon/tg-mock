@@ -28,10 +28,20 @@ type StorageConfig struct {
 	Dir string `yaml:"dir"`
 }
 
+// WebhookConfig holds webhook configuration for a bot token
+type WebhookConfig struct {
+	URL            string   `yaml:"url"`
+	SecretToken    string   `yaml:"secret_token,omitempty"`
+	IPAddress      string   `yaml:"ip_address,omitempty"`
+	MaxConnections int      `yaml:"max_connections,omitempty"`
+	AllowedUpdates []string `yaml:"allowed_updates,omitempty"`
+}
+
 // TokenConfig holds configuration for a bot token
 type TokenConfig struct {
-	Status  string `yaml:"status"`
-	BotName string `yaml:"bot_name"`
+	Status  string         `yaml:"status"`
+	BotName string         `yaml:"bot_name"`
+	Webhook *WebhookConfig `yaml:"webhook,omitempty"`
 }
 
 // ScenarioConfig defines a test scenario for simulating specific responses

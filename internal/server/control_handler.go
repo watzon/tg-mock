@@ -11,6 +11,7 @@ import (
 	"github.com/watzon/tg-mock/internal/scenario"
 	"github.com/watzon/tg-mock/internal/tokens"
 	"github.com/watzon/tg-mock/internal/updates"
+	"github.com/watzon/tg-mock/internal/webhook"
 )
 
 type ControlHandler struct {
@@ -18,14 +19,16 @@ type ControlHandler struct {
 	tokens    *tokens.Registry
 	updates   *updates.Queue
 	requests  *inspector.Recorder
+	webhooks  *webhook.Registry
 }
 
-func NewControlHandler(scenarios *scenario.Engine, tokens *tokens.Registry, updates *updates.Queue, requests *inspector.Recorder) *ControlHandler {
+func NewControlHandler(scenarios *scenario.Engine, tokens *tokens.Registry, updates *updates.Queue, requests *inspector.Recorder, webhooks *webhook.Registry) *ControlHandler {
 	return &ControlHandler{
 		scenarios: scenarios,
 		tokens:    tokens,
 		updates:   updates,
 		requests:  requests,
+		webhooks:  webhooks,
 	}
 }
 
@@ -45,6 +48,8 @@ func (h *ControlHandler) Routes() chi.Router {
 		r.Post("/", h.registerToken)
 		r.Delete("/{token}", h.deleteToken)
 		r.Patch("/{token}", h.updateToken)
+		// Per-token update injection with webhook routing
+		r.Post("/{token}/updates", h.injectTokenUpdate)
 	})
 
 	// Updates
@@ -52,6 +57,15 @@ func (h *ControlHandler) Routes() chi.Router {
 		r.Get("/", h.listUpdates)
 		r.Post("/", h.addUpdate)
 		r.Delete("/", h.clearUpdates)
+	})
+
+	// Webhooks
+	r.Route("/webhooks", func(r chi.Router) {
+		r.Get("/", h.listWebhooks)
+		r.Delete("/", h.clearWebhooks)
+		r.Get("/{token}", h.getWebhook)
+		r.Put("/{token}", h.setWebhook)
+		r.Delete("/{token}", h.deleteWebhook)
 	})
 
 	// Requests
@@ -217,6 +231,7 @@ func (h *ControlHandler) reset(w http.ResponseWriter, r *http.Request) {
 	h.scenarios.Clear()
 	h.updates.Clear()
 	h.requests.Clear()
+	h.webhooks.Clear()
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -226,5 +241,94 @@ func (h *ControlHandler) getState(w http.ResponseWriter, r *http.Request) {
 		"scenarios_count":   len(h.scenarios.List()),
 		"updates_pending":   h.updates.Pending(),
 		"requests_recorded": h.requests.Count(),
+		"webhooks_count":    len(h.webhooks.List()),
 	})
+}
+
+// Webhook handlers
+
+func (h *ControlHandler) listWebhooks(w http.ResponseWriter, r *http.Request) {
+	webhooks := h.webhooks.List()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"webhooks": webhooks,
+		"count":    len(webhooks),
+	})
+}
+
+func (h *ControlHandler) clearWebhooks(w http.ResponseWriter, r *http.Request) {
+	h.webhooks.Clear()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *ControlHandler) getWebhook(w http.ResponseWriter, r *http.Request) {
+	token := chi.URLParam(r, "token")
+	cfg := h.webhooks.Get(token)
+	if cfg == nil {
+		http.Error(w, "webhook not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(cfg)
+}
+
+func (h *ControlHandler) setWebhook(w http.ResponseWriter, r *http.Request) {
+	token := chi.URLParam(r, "token")
+
+	var cfg webhook.Config
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	h.webhooks.Set(token, &cfg)
+	w.WriteHeader(http.StatusCreated)
+}
+
+func (h *ControlHandler) deleteWebhook(w http.ResponseWriter, r *http.Request) {
+	token := chi.URLParam(r, "token")
+	h.webhooks.Delete(token)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// injectTokenUpdate injects an update for a specific token, routing to webhook if active
+func (h *ControlHandler) injectTokenUpdate(w http.ResponseWriter, r *http.Request) {
+	token := chi.URLParam(r, "token")
+
+	var update map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	// Check if webhook is active for this token
+	if h.webhooks.IsActive(token) {
+		// Deliver via webhook
+		result, err := h.webhooks.Deliver(token, update)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		response := map[string]interface{}{
+			"delivered":   true,
+			"success":     result.Success,
+			"status_code": result.StatusCode,
+			"duration_ms": result.DurationMs,
+		}
+		if result.Error != "" {
+			response["error"] = result.Error
+		}
+		json.NewEncoder(w).Encode(response)
+	} else {
+		// Queue for polling
+		id := h.updates.Add(update)
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"queued":    true,
+			"update_id": id,
+		})
+	}
 }

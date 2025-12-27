@@ -305,4 +305,232 @@ func TestIntegration(t *testing.T) {
 			t.Errorf("expected scenario_id=header:rate_limit, got %v", req1["scenario_id"])
 		}
 	})
+
+	// Webhook tests
+	t.Run("webhook - setWebhook and getWebhookInfo", func(t *testing.T) {
+		// Reset state
+		http.Post(ts.URL+"/__control/reset", "", nil)
+
+		// Set webhook
+		body := bytes.NewBufferString(`{"url":"https://example.com/webhook","secret_token":"mysecret","max_connections":40}`)
+		resp, err := http.Post(ts.URL+"/bot123:abc/setWebhook", "application/json", body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+
+		var result map[string]interface{}
+		json.NewDecoder(resp.Body).Decode(&result)
+
+		if result["ok"] != true {
+			t.Errorf("expected ok=true, got %v", result)
+		}
+		if result["result"] != true {
+			t.Errorf("expected result=true, got %v", result["result"])
+		}
+
+		// Get webhook info
+		resp, err = http.Get(ts.URL + "/bot123:abc/getWebhookInfo")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+
+		json.NewDecoder(resp.Body).Decode(&result)
+
+		if result["ok"] != true {
+			t.Errorf("expected ok=true, got %v", result)
+		}
+
+		info := result["result"].(map[string]interface{})
+		if info["url"] != "https://example.com/webhook" {
+			t.Errorf("expected url=https://example.com/webhook, got %v", info["url"])
+		}
+		if info["max_connections"].(float64) != 40 {
+			t.Errorf("expected max_connections=40, got %v", info["max_connections"])
+		}
+	})
+
+	t.Run("webhook - deleteWebhook clears config", func(t *testing.T) {
+		// Reset state
+		http.Post(ts.URL+"/__control/reset", "", nil)
+
+		// Set webhook first
+		body := bytes.NewBufferString(`{"url":"https://example.com/webhook"}`)
+		http.Post(ts.URL+"/bot123:abc/setWebhook", "application/json", body)
+
+		// Delete webhook
+		resp, err := http.Post(ts.URL+"/bot123:abc/deleteWebhook", "application/json", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+
+		var result map[string]interface{}
+		json.NewDecoder(resp.Body).Decode(&result)
+
+		if result["ok"] != true {
+			t.Errorf("expected ok=true, got %v", result)
+		}
+
+		// Get webhook info - should show empty URL
+		resp, err = http.Get(ts.URL + "/bot123:abc/getWebhookInfo")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+
+		json.NewDecoder(resp.Body).Decode(&result)
+		info := result["result"].(map[string]interface{})
+		if info["url"] != "" {
+			t.Errorf("expected url to be empty, got %v", info["url"])
+		}
+	})
+
+	t.Run("webhook - getUpdates returns 409 when webhook active", func(t *testing.T) {
+		// Reset state
+		http.Post(ts.URL+"/__control/reset", "", nil)
+
+		// Set webhook
+		body := bytes.NewBufferString(`{"url":"https://example.com/webhook"}`)
+		http.Post(ts.URL+"/bot123:abc/setWebhook", "application/json", body)
+
+		// Try to call getUpdates
+		resp, err := http.Get(ts.URL + "/bot123:abc/getUpdates")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != 409 {
+			t.Errorf("expected 409 Conflict, got %d", resp.StatusCode)
+		}
+
+		var result map[string]interface{}
+		json.NewDecoder(resp.Body).Decode(&result)
+
+		if result["ok"] != false {
+			t.Errorf("expected ok=false, got %v", result)
+		}
+		desc := result["description"].(string)
+		if desc != "Conflict: can't use getUpdates method while webhook is active" {
+			t.Errorf("unexpected description: %s", desc)
+		}
+	})
+
+	t.Run("webhook - control API manages webhooks", func(t *testing.T) {
+		// Reset state
+		http.Post(ts.URL+"/__control/reset", "", nil)
+
+		// Set webhook via control API
+		body := bytes.NewBufferString(`{"url":"https://control.example.com/webhook","secret_token":"controlsecret"}`)
+		req, _ := http.NewRequest("PUT", ts.URL+"/__control/webhooks/123:abc", body)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != 201 {
+			t.Errorf("expected 201, got %d", resp.StatusCode)
+		}
+
+		// List webhooks
+		resp, err = http.Get(ts.URL + "/__control/webhooks")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+
+		var result map[string]interface{}
+		json.NewDecoder(resp.Body).Decode(&result)
+
+		if result["count"].(float64) != 1 {
+			t.Errorf("expected count=1, got %v", result["count"])
+		}
+
+		// Get specific webhook
+		resp, err = http.Get(ts.URL + "/__control/webhooks/123:abc")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+
+		var cfg map[string]interface{}
+		json.NewDecoder(resp.Body).Decode(&cfg)
+
+		if cfg["url"] != "https://control.example.com/webhook" {
+			t.Errorf("expected url=https://control.example.com/webhook, got %v", cfg["url"])
+		}
+
+		// Delete webhook via control API
+		req, _ = http.NewRequest("DELETE", ts.URL+"/__control/webhooks/123:abc", nil)
+		resp, err = http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != 204 {
+			t.Errorf("expected 204, got %d", resp.StatusCode)
+		}
+
+		// Verify deleted
+		resp, err = http.Get(ts.URL + "/__control/webhooks/123:abc")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != 404 {
+			t.Errorf("expected 404 after delete, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("webhook - state includes webhook count", func(t *testing.T) {
+		// Reset state
+		http.Post(ts.URL+"/__control/reset", "", nil)
+
+		// Set webhook
+		body := bytes.NewBufferString(`{"url":"https://example.com/webhook"}`)
+		http.Post(ts.URL+"/bot123:abc/setWebhook", "application/json", body)
+
+		// Check state
+		resp, err := http.Get(ts.URL + "/__control/state")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+
+		var result map[string]interface{}
+		json.NewDecoder(resp.Body).Decode(&result)
+
+		if result["webhooks_count"].(float64) != 1 {
+			t.Errorf("expected webhooks_count=1, got %v", result["webhooks_count"])
+		}
+	})
+
+	t.Run("webhook - reset clears webhooks", func(t *testing.T) {
+		// Set webhook first
+		body := bytes.NewBufferString(`{"url":"https://example.com/webhook"}`)
+		http.Post(ts.URL+"/bot123:abc/setWebhook", "application/json", body)
+
+		// Reset
+		http.Post(ts.URL+"/__control/reset", "", nil)
+
+		// Check state
+		resp, err := http.Get(ts.URL + "/__control/state")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+
+		var result map[string]interface{}
+		json.NewDecoder(resp.Body).Decode(&result)
+
+		if result["webhooks_count"].(float64) != 0 {
+			t.Errorf("expected webhooks_count=0 after reset, got %v", result["webhooks_count"])
+		}
+	})
 }

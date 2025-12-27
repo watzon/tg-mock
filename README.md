@@ -22,6 +22,7 @@ A mock Telegram Bot API server for testing bots and bot libraries. Inspired by [
     - [Scenarios](#scenarios)
     - [Response Data Overrides](#response-data-overrides)
     - [Updates](#updates)
+    - [Webhooks](#webhooks)
     - [Request Inspector](#request-inspector)
     - [Header-based Errors](#header-based-errors)
       - [Available Built-in Scenarios](#available-built-in-scenarios)
@@ -48,6 +49,7 @@ tg-mock solves these problems by providing a drop-in replacement for `api.telegr
 - Records all requests for inspection and assertion in tests
 - Includes built-in error responses for common Telegram API errors
 - Handles file uploads with configurable storage
+- Simulates webhook delivery for testing webhook-based bots
 
 ## Install
 
@@ -140,6 +142,11 @@ tokens:
   "123456789:ABC-xyz":
     status: active
     bot_name: MyTestBot
+    webhook:  # Optional pre-configured webhook
+      url: "https://mybot.example.com/webhook"
+      secret_token: "my_secret_token"
+      max_connections: 40
+      allowed_updates: ["message", "callback_query"]
   "987654321:XYZ-abc":
     status: revoked
 
@@ -304,6 +311,84 @@ curl -X POST http://localhost:8081/__control/updates \
 # View pending updates
 curl http://localhost:8081/__control/updates
 ```
+
+### Webhooks
+
+tg-mock supports webhook simulation, allowing you to test webhook-based bots. When a webhook is registered for a token, injected updates are POSTed to the webhook URL instead of being queued for polling.
+
+**Bot API Methods:**
+
+The standard Telegram webhook methods work as expected:
+
+```bash
+# Register a webhook
+curl -X POST http://localhost:8081/bot123:abc/setWebhook \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "http://localhost:3000/webhook",
+    "secret_token": "my_secret"
+  }'
+
+# Check webhook status
+curl http://localhost:8081/bot123:abc/getWebhookInfo
+
+# Delete webhook
+curl -X POST http://localhost:8081/bot123:abc/deleteWebhook
+```
+
+When a webhook is active, calling `getUpdates` returns a 409 Conflict error, matching real Telegram behavior.
+
+**Control API:**
+
+Manage webhooks directly via the control API:
+
+```bash
+# List all registered webhooks
+curl http://localhost:8081/__control/webhooks
+
+# Set webhook for a token (bypasses URL validation)
+curl -X PUT http://localhost:8081/__control/webhooks/123:abc \
+  -H "Content-Type: application/json" \
+  -d '{"url": "http://localhost:3000/webhook", "secret_token": "secret"}'
+
+# Get webhook for a specific token
+curl http://localhost:8081/__control/webhooks/123:abc
+
+# Delete webhook
+curl -X DELETE http://localhost:8081/__control/webhooks/123:abc
+
+# Clear all webhooks
+curl -X DELETE http://localhost:8081/__control/webhooks
+```
+
+**Injecting Updates with Webhook Delivery:**
+
+Use the per-token update injection endpoint to automatically route updates to webhooks:
+
+```bash
+# Inject an update for a token with an active webhook
+curl -X POST http://localhost:8081/__control/tokens/123:abc/updates \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": {
+      "message_id": 1,
+      "text": "/start",
+      "chat": {"id": 456, "type": "private"},
+      "from": {"id": 789, "is_bot": false, "first_name": "User"}
+    }
+  }'
+
+# Response when webhook is active:
+# {"delivered": true, "success": true, "status_code": 200, "duration_ms": 15}
+
+# Response when no webhook (queued for polling):
+# {"queued": true, "update_id": 1}
+```
+
+When delivered via webhook, tg-mock:
+- POSTs the update JSON to the registered URL
+- Includes the `X-Telegram-Bot-Api-Secret-Token` header if a secret is configured
+- Tracks delivery errors in `getWebhookInfo` (last_error_date, last_error_message)
 
 ### Request Inspector
 

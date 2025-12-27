@@ -16,6 +16,7 @@ import (
 	"github.com/watzon/tg-mock/internal/storage"
 	"github.com/watzon/tg-mock/internal/tokens"
 	"github.com/watzon/tg-mock/internal/updates"
+	"github.com/watzon/tg-mock/internal/webhook"
 )
 
 type Server struct {
@@ -26,6 +27,7 @@ type Server struct {
 	scenarioEngine  *scenario.Engine
 	updateQueue     *updates.Queue
 	requestRecorder *inspector.Recorder
+	webhookRegistry *webhook.Registry
 	fileStore       storage.Store
 	botHandler      *BotHandler
 	controlHandler  *ControlHandler
@@ -52,6 +54,7 @@ func New(cfg Config) *Server {
 	scenarioEngine := scenario.NewEngine()
 	updateQueue := updates.NewQueue()
 	requestRecorder := inspector.NewRecorder()
+	webhookRegistry := webhook.NewRegistry()
 
 	// Create faker with configured seed
 	f := faker.New(faker.Config{
@@ -67,6 +70,17 @@ func New(cfg Config) *Server {
 			Status:  tokens.Status(info.Status),
 			BotName: info.BotName,
 		})
+
+		// Load webhook config if present
+		if info.Webhook != nil {
+			webhookRegistry.Set(token, &webhook.Config{
+				URL:            info.Webhook.URL,
+				SecretToken:    info.Webhook.SecretToken,
+				IPAddress:      info.Webhook.IPAddress,
+				MaxConnections: info.Webhook.MaxConnections,
+				AllowedUpdates: info.Webhook.AllowedUpdates,
+			})
+		}
 	}
 
 	// Load scenarios from config
@@ -107,9 +121,10 @@ func New(cfg Config) *Server {
 		scenarioEngine:  scenarioEngine,
 		updateQueue:     updateQueue,
 		requestRecorder: requestRecorder,
+		webhookRegistry: webhookRegistry,
 		fileStore:       fileStore,
-		botHandler:      NewBotHandler(registry, scenarioEngine, updateQueue, responder, requestRecorder, registryEnabled),
-		controlHandler:  NewControlHandler(scenarioEngine, registry, updateQueue, requestRecorder),
+		botHandler:      NewBotHandler(registry, scenarioEngine, updateQueue, responder, requestRecorder, webhookRegistry, registryEnabled),
+		controlHandler:  NewControlHandler(scenarioEngine, registry, updateQueue, requestRecorder, webhookRegistry),
 	}
 
 	s.setupRoutes()
