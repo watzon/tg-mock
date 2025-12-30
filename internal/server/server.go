@@ -54,7 +54,6 @@ func New(cfg Config) *Server {
 	scenarioEngine := scenario.NewEngine()
 	updateQueue := updates.NewQueue()
 	requestRecorder := inspector.NewRecorder()
-	webhookRegistry := webhook.NewRegistry()
 
 	// Create faker with configured seed
 	f := faker.New(faker.Config{
@@ -63,6 +62,9 @@ func New(cfg Config) *Server {
 
 	// Create responder with faker
 	responder := NewResponder(f)
+
+	// Create webhook registry with responder for method execution
+	webhookRegistry := webhook.NewRegistry(responder)
 
 	// Load tokens from config
 	for token, info := range cfg.Tokens {

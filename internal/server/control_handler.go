@@ -321,6 +321,10 @@ func (h *ControlHandler) injectTokenUpdate(w http.ResponseWriter, r *http.Reques
 		if result.Error != "" {
 			response["error"] = result.Error
 		}
+		// Include method result if webhook returned a method call
+		if result.MethodResult != nil {
+			response["method_result"] = result.MethodResult
+		}
 		json.NewEncoder(w).Encode(response)
 	} else {
 		// Queue for polling
