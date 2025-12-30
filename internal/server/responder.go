@@ -4,6 +4,7 @@ package server
 import (
 	"github.com/watzon/tg-mock/gen"
 	"github.com/watzon/tg-mock/internal/faker"
+	"github.com/watzon/tg-mock/internal/webhook"
 )
 
 // Responder generates appropriate responses for Bot API methods
@@ -34,7 +35,15 @@ func (r *Responder) GenerateWithOverrides(spec gen.MethodSpec, params, overrides
 	return r.faker.GenerateWithOverrides(returnType, params, overrides), nil
 }
 
+// ExecuteMethod implements the webhook.MethodExecutor interface.
+// It runs a Bot API method with the given parameters and returns the generated response.
+func (r *Responder) ExecuteMethod(spec gen.MethodSpec, params map[string]interface{}) (interface{}, error) {
+	return r.Generate(spec, params)
+}
+
 // GetFaker returns the faker instance for direct access when needed.
 func (r *Responder) GetFaker() *faker.Faker {
 	return r.faker
 }
+
+var _ webhook.MethodExecutor = (*Responder)(nil)

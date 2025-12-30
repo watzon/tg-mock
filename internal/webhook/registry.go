@@ -4,10 +4,14 @@ package webhook
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/watzon/tg-mock/gen"
 )
 
 // Config represents a registered webhook configuration for a bot token.
@@ -24,11 +28,30 @@ type Config struct {
 
 // DeliveryResult captures the result of a webhook delivery attempt.
 type DeliveryResult struct {
-	Success      bool   `json:"success"`
-	StatusCode   int    `json:"status_code"`
-	ResponseBody string `json:"response_body,omitempty"`
-	Error        string `json:"error,omitempty"`
-	DurationMs   int64  `json:"duration_ms"`
+	Success      bool                   `json:"success"`
+	StatusCode   int                    `json:"status_code"`
+	ResponseBody string                 `json:"response_body,omitempty"`
+	Error        string                 `json:"error,omitempty"`
+	DurationMs   int64                  `json:"duration_ms"`
+	MethodResult *MethodExecutionResult `json:"method_result,omitempty"` // Executed webhook method
+}
+
+// MethodExecutionResult captures the result of executing a method
+// returned by a webhook in its response body.
+type MethodExecutionResult struct {
+	Method   string                 `json:"method,omitempty"`   // Method name executed
+	Params   map[string]interface{} `json:"params,omitempty"`   // Parameters from webhook
+	Response interface{}            `json:"response,omitempty"` // Generated response
+	Error    string                 `json:"error,omitempty"`    // Error if execution failed
+}
+
+// MethodExecutor is an interface for executing Bot API methods.
+// This allows the webhook package to execute methods without
+// creating a circular dependency with the server package.
+type MethodExecutor interface {
+	// ExecuteMethod runs a Bot API method with the given parameters
+	// and returns the generated response.
+	ExecuteMethod(spec gen.MethodSpec, params map[string]interface{}) (interface{}, error)
 }
 
 // Registry manages webhook configurations per bot token.
@@ -36,15 +59,19 @@ type Registry struct {
 	mu       sync.RWMutex
 	webhooks map[string]*Config
 	client   *http.Client
+	executor MethodExecutor // Executes methods from webhook responses
 }
 
 // NewRegistry creates a new webhook registry.
-func NewRegistry() *Registry {
+// The executor is used to execute Bot API methods returned in webhook responses.
+// It can be nil if method execution is not needed.
+func NewRegistry(executor MethodExecutor) *Registry {
 	return &Registry{
 		webhooks: make(map[string]*Config),
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
+		executor: executor,
 	}
 }
 
@@ -145,6 +172,54 @@ func (r *Registry) GetInfo(token string, pendingCount int) map[string]interface{
 	return info
 }
 
+// parseWebhookResponse checks if the response body contains a Bot API method call.
+// Returns the method name and parameters if found.
+// If the response is not a valid method call, returns empty strings and nil error.
+func (r *Registry) parseWebhookResponse(body []byte) (string, map[string]interface{}, error) {
+	if len(body) == 0 {
+		return "", nil, nil
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		// Not valid JSON - not a method call, just an ack
+		return "", nil, nil
+	}
+
+	method, _ := resp["method"].(string)
+	if method == "" {
+		// No method field - just an acknowledgment
+		return "", nil, nil
+	}
+
+	// Extract all other fields as parameters
+	params := make(map[string]interface{})
+	for k, v := range resp {
+		if k != "method" {
+			params[k] = v
+		}
+	}
+
+	return method, params, nil
+}
+
+// executeMethod runs a Bot API method using the configured executor.
+// Returns the generated response or an error.
+func (r *Registry) executeMethod(method string, params map[string]interface{}) (interface{}, error) {
+	if r.executor == nil {
+		return nil, errors.New("method executor not configured")
+	}
+
+	// Look up method spec
+	spec, ok := gen.Methods[method]
+	if !ok {
+		return nil, fmt.Errorf("unknown method: %s", method)
+	}
+
+	// Use executor to generate response
+	return r.executor.ExecuteMethod(spec, params)
+}
+
 // Deliver sends an update to the registered webhook for a token.
 // Returns the delivery result and any error.
 func (r *Registry) Deliver(token string, update map[string]interface{}) (*DeliveryResult, error) {
@@ -218,6 +293,22 @@ func (r *Registry) Deliver(token string, update map[string]interface{}) (*Delive
 		StatusCode:   resp.StatusCode,
 		ResponseBody: string(respBody),
 		DurationMs:   duration,
+	}
+
+	// If the webhook returned a successful response, check if it contains a method call
+	if result.Success && len(respBody) > 0 {
+		if method, params, err := r.parseWebhookResponse(respBody); err == nil && method != "" {
+			// Webhook returned a method call - execute it
+			methodResp, execErr := r.executeMethod(method, params)
+			result.MethodResult = &MethodExecutionResult{
+				Method:   method,
+				Params:   params,
+				Response: methodResp,
+			}
+			if execErr != nil {
+				result.MethodResult.Error = execErr.Error()
+			}
+		}
 	}
 
 	if !result.Success {
